@@ -14,14 +14,21 @@ export function ChangeCard({ item }: { item: ProbabilityChange }) {
   const diff = item.log_odds_diff.toFixed(3);
 
   const analysis = item.analysis as ProbabilityAnalysis | null;
+  const displayTitle = analysis?.question_zh || item.question || item.slug;
+  const polymarketUrl = `https://polymarket.com/event/${item.slug}`;
 
   return (
     <div className="rounded-xl border border-[#30363d] bg-[#161b22] p-4.5 transition-colors hover:border-[#58a6ff]">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
-        <h3 className="flex-1 text-[0.95rem] font-semibold leading-snug">
-          {item.question || item.slug}
-        </h3>
+        <a
+          href={polymarketUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 text-[0.95rem] font-semibold leading-snug hover:text-[#58a6ff]"
+        >
+          {displayTitle}
+        </a>
         <span className="shrink-0 rounded-lg bg-[#1f2937] px-2 py-0.5 text-[0.7rem] text-[#8b949e]">
           {getCategoryLabel(item.category)}
         </span>
@@ -48,15 +55,7 @@ export function ChangeCard({ item }: { item: ProbabilityChange }) {
   );
 }
 
-const confColors: Record<string, string> = {
-  high: "#3fb950",
-  medium: "#d29922",
-  low: "#f85149",
-};
-
 function AnalysisSection({ analysis }: { analysis: ProbabilityAnalysis }) {
-  const confColor = confColors[analysis.confidence] || "#8b949e";
-
   return (
     <div className="mt-3.5 border-t border-[#21262d] pt-3.5">
       <p className="mb-2 font-semibold leading-relaxed">
@@ -66,7 +65,7 @@ function AnalysisSection({ analysis }: { analysis: ProbabilityAnalysis }) {
         {analysis.detailed_analysis}
       </p>
       {analysis.sources?.length > 0 && (
-        <div className="mb-2 break-all text-xs text-[#6e7681]">
+        <div className="break-all text-xs text-[#6e7681]">
           来源：
           {analysis.sources.map((s, i) => (
             <span key={i}>
@@ -87,15 +86,6 @@ function AnalysisSection({ analysis }: { analysis: ProbabilityAnalysis }) {
           ))}
         </div>
       )}
-      <span
-        className="rounded-lg px-2 py-0.5 text-[0.7rem]"
-        style={{
-          background: `${confColor}22`,
-          color: confColor,
-        }}
-      >
-        置信度: {analysis.confidence}
-      </span>
     </div>
   );
 }

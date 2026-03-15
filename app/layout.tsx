@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,34 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN">
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        <nav className="border-b border-[#21262d] bg-[#161b22]">
+          <div className="mx-auto flex max-w-[960px] items-center gap-6 px-4 py-3">
+            <Link href="/" className="text-sm font-bold text-[#e1e4e8]">
+              OdailySeer
+            </Link>
+            <Link
+              href="/"
+              className="text-sm text-[#8b949e] transition-colors hover:text-[#e1e4e8]"
+            >
+              异动监控
+            </Link>
+            <Link
+              href="/analyze"
+              className="text-sm text-[#8b949e] transition-colors hover:text-[#e1e4e8]"
+            >
+              市场分析
+            </Link>
+            <Link
+              href="/new-markets"
+              className="text-sm text-[#8b949e] transition-colors hover:text-[#e1e4e8]"
+            >
+              Polymarket上新
+            </Link>
+          </div>
+        </nav>
+        {children}
+      </body>
     </html>
   );
 }

@@ -1,8 +1,8 @@
 export interface ProbabilityAnalysis {
+  question_zh?: string;
   event_summary: string;
   detailed_analysis: string;
   sources: string[];
-  confidence: "high" | "medium" | "low";
 }
 
 export interface ProbabilityChange {
@@ -31,3 +31,44 @@ export const CATEGORIES = [
   { key: "tech", label: "科技" },
   { key: "culture", label: "文化" },
 ] as const;
+
+// Market Analyzer types
+export interface TraderProfile {
+  address: string;
+  name: string;
+  amount: number;
+  win_rate: number | null;
+  total_positions: number | null;
+  pnl: number | null;
+  tags: string | null;
+}
+
+export interface OutcomeSide {
+  name: string;
+  price: number;
+  holders: TraderProfile[];
+}
+
+export interface MarketAnalysis {
+  question: string;
+  slug: string;
+  sides: [OutcomeSide, OutcomeSide];
+}
+
+// ── New Markets (Polymarket上新) ──
+
+export interface NewMarketAnalysis {
+  question_zh?: string;
+  reason: string;
+  appeal_tags: string[];
+}
+
+export interface NewMarket {
+  id: number;
+  slug: string;
+  question: string;
+  url: string;
+  ai_analysis: NewMarketAnalysis | null;
+  detected_at: string;
+  batch_id: string | null;
+}
