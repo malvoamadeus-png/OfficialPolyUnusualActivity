@@ -69,6 +69,7 @@ export interface NewMarket {
   question: string;
   url: string;
   ai_analysis: NewMarketAnalysis | null;
+  created_at: string | null;
   detected_at: string;
   batch_id: string | null;
 }
