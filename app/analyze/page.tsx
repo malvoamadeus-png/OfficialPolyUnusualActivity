@@ -4,7 +4,7 @@ import { useState } from "react";
 import { MarketAnalysis } from "@/lib/types";
 import { MatchupBoard } from "@/components/MatchupBoard";
 
-const API_BASE = process.env.NEXT_PUBLIC_MARKET_API_URL || "http://8.159.141.123:8917";
+const API_BASE = "";
 
 function extractSlug(input: string): string {
   const trimmed = input.trim();
