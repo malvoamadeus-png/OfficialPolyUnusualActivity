@@ -8,7 +8,8 @@ export default async function NewMarketsPage() {
   const { data } = await getSupabase()
     .from("new_markets")
     .select("*")
-    .order("detected_at", { ascending: false });
+    .order("created_at", { ascending: false, nullsFirst: false })
+    .limit(15);
 
   const markets = (data || []) as NewMarket[];
 
