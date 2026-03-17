@@ -41,6 +41,8 @@ export interface TraderProfile {
   total_positions: number | null;
   pnl: number | null;
   tags: string | null;
+  trades: number | null;
+  active_days: number | null;
 }
 
 export interface OutcomeSide {

@@ -110,7 +110,7 @@ function HolderCard({
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-1 text-xs">
+      <div className="grid grid-cols-5 gap-1 text-xs">
         <div>
           <div className="text-[#6e7681]">持仓</div>
           <div className="font-medium">${formatNum(holder.amount)}</div>
@@ -132,6 +132,18 @@ function HolderCard({
             {holder.pnl !== null
               ? `${holder.pnl >= 0 ? "+" : ""}$${formatNum(Math.abs(holder.pnl))}`
               : "N/A"}
+          </div>
+        </div>
+        <div>
+          <div className="text-[#6e7681]">交易</div>
+          <div className="font-medium">
+            {holder.trades !== null ? formatNum(holder.trades) : "N/A"}
+          </div>
+        </div>
+        <div>
+          <div className="text-[#6e7681]">活跃</div>
+          <div className="font-medium">
+            {holder.active_days !== null ? `${holder.active_days}天` : "N/A"}
           </div>
         </div>
       </div>
