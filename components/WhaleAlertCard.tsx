@@ -54,7 +54,12 @@ function MarketSection({
 
       {yesHolders.length > 0 && (
         <div className="mb-2">
-          <div className="mb-1 text-[0.7rem] font-bold text-[#3fb950]">YES</div>
+          <div className="mb-1 text-[0.7rem] font-bold text-[#3fb950]">
+            YES{" "}
+            <span className="font-normal text-[#8b949e]">
+              @ {((yesHolders[0].side_price ?? 0) * 100).toFixed(1)}¢
+            </span>
+          </div>
           <div className="space-y-1.5">
             {yesHolders.map((h) => (
               <HolderRow key={h.holder_address} h={h} />
@@ -65,7 +70,12 @@ function MarketSection({
 
       {noHolders.length > 0 && (
         <div>
-          <div className="mb-1 text-[0.7rem] font-bold text-[#f85149]">NO</div>
+          <div className="mb-1 text-[0.7rem] font-bold text-[#f85149]">
+            NO{" "}
+            <span className="font-normal text-[#8b949e]">
+              @ {((noHolders[0].side_price ?? 0) * 100).toFixed(1)}¢
+            </span>
+          </div>
           <div className="space-y-1.5">
             {noHolders.map((h) => (
               <HolderRow key={h.holder_address} h={h} />
