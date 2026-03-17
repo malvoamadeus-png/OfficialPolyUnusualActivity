@@ -75,7 +75,24 @@ export interface NewMarket {
   batch_id: string | null;
 }
 
-// ── Whale Alerts (大额监控) ──
+// ── Whale Trades (大额活动) ──
+
+export interface WhaleTrade {
+  id: number;
+  transaction_hash: string;
+  proxy_wallet: string;
+  name: string | null;
+  side: string;
+  size: number;
+  price: number;
+  outcome: string | null;
+  title: string;
+  slug: string;
+  event_slug: string | null;
+  icon: string | null;
+  timestamp: number;
+  detected_at: string;
+}
 
 export interface WhaleAlert {
   id: number;

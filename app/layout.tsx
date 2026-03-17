@@ -44,6 +44,12 @@ export default function RootLayout({
             >
               大额监控
             </Link>
+            <Link
+              href="/whale-trades"
+              className="text-sm text-[#8b949e] transition-colors hover:text-[#e1e4e8]"
+            >
+              大额活动
+            </Link>
           </div>
         </nav>
         {children}
