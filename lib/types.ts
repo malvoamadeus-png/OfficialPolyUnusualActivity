@@ -80,13 +80,16 @@ export interface NewMarket {
 export interface WhaleAlert {
   id: number;
   slug: string;
-  question: string;
+  event_title: string;
   url: string;
+  market_question: string;
   holder_address: string;
   holder_name: string | null;
   holder_amount: number;
   holder_trades: number | null;
   holder_active_days: number | null;
   side: string | null;
+  side_price: number | null;
+  position_value: number | null;
   detected_at: string;
 }

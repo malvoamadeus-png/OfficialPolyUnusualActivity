@@ -13,12 +13,24 @@ export default async function WhaleAlertsPage() {
 
   const alerts = (data || []) as WhaleAlert[];
 
-  // Group by slug
-  const grouped = new Map<string, WhaleAlert[]>();
+  // Group by slug → then by market_question
+  const eventMap = new Map<
+    string,
+    { eventTitle: string; url: string; markets: Map<string, WhaleAlert[]> }
+  >();
+
   for (const a of alerts) {
-    const list = grouped.get(a.slug) || [];
-    list.push(a);
-    grouped.set(a.slug, list);
+    if (!eventMap.has(a.slug)) {
+      eventMap.set(a.slug, {
+        eventTitle: a.event_title,
+        url: a.url,
+        markets: new Map(),
+      });
+    }
+    const event = eventMap.get(a.slug)!;
+    const mList = event.markets.get(a.market_question) || [];
+    mList.push(a);
+    event.markets.set(a.market_question, mList);
   }
 
   return (
@@ -28,16 +40,16 @@ export default async function WhaleAlertsPage() {
         新账户 + 大额持仓 = 可疑信号（注册&lt;30天 · 交易&lt;20次 · 持仓&gt;$10k）
       </p>
 
-      {grouped.size === 0 ? (
+      {eventMap.size === 0 ? (
         <p className="py-10 text-center text-[#8b949e]">暂无数据</p>
       ) : (
         <div className="flex flex-col gap-3.5">
-          {[...grouped.entries()].map(([slug, holders]) => (
+          {[...eventMap.entries()].map(([slug, { eventTitle, url, markets }]) => (
             <WhaleAlertCard
               key={slug}
-              question={holders[0].question}
-              url={holders[0].url}
-              holders={holders}
+              eventTitle={eventTitle}
+              url={url}
+              markets={markets}
             />
           ))}
         </div>

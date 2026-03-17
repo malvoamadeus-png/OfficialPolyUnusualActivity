@@ -11,13 +11,13 @@ function formatUsd(n: number): string {
 }
 
 export function WhaleAlertCard({
-  question,
+  eventTitle,
   url,
-  holders,
+  markets,
 }: {
-  question: string;
+  eventTitle: string;
   url: string;
-  holders: WhaleAlert[];
+  markets: Map<string, WhaleAlert[]>;
 }) {
   return (
     <div className="rounded-xl border border-[#30363d] bg-[#161b22] p-4.5 transition-colors hover:border-[#f0883e]">
@@ -27,45 +27,76 @@ export function WhaleAlertCard({
         rel="noopener noreferrer"
         className="text-[0.95rem] font-semibold leading-snug text-[#e1e4e8] hover:text-[#f0883e]"
       >
-        {question}
+        {eventTitle}
       </a>
 
-      <div className="mt-3 border-t border-[#21262d] pt-3">
-        <div className="space-y-2">
-          {holders.map((h) => (
-            <div
-              key={h.holder_address}
-              className="flex items-center gap-3 rounded-lg bg-[#0d1117] px-3 py-2 text-xs"
-            >
-              <span
-                className={`shrink-0 rounded px-1.5 py-0.5 text-[0.65rem] font-bold ${
-                  h.side === "Yes"
-                    ? "bg-[#1a3a2a] text-[#3fb950]"
-                    : "bg-[#3d1f2a] text-[#f85149]"
-                }`}
-              >
-                {h.side || "?"}
-              </span>
-              <span className="font-mono text-[#8b949e]">
-                {truncAddr(h.holder_address)}
-              </span>
-              <span className="font-semibold text-[#f0883e]">
-                {formatUsd(h.holder_amount)}
-              </span>
-              <span className="text-[#6e7681]">
-                {h.holder_trades ?? "?"}次交易
-              </span>
-              <span className="text-[#6e7681]">
-                {h.holder_active_days ?? "?"}天
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
+      {[...markets.entries()].map(([mq, holders]) => (
+        <MarketSection key={mq} question={mq} holders={holders} />
+      ))}
+    </div>
+  );
+}
 
-      <div className="mt-2.5 text-xs text-[#6e7681]">
-        {new Date(holders[0].detected_at).toLocaleString("zh-CN")}
-      </div>
+function MarketSection({
+  question,
+  holders,
+}: {
+  question: string;
+  holders: WhaleAlert[];
+}) {
+  // Split by side
+  const yesHolders = holders.filter((h) => h.side === "Yes");
+  const noHolders = holders.filter((h) => h.side !== "Yes");
+
+  return (
+    <div className="mt-3 border-t border-[#21262d] pt-3">
+      <p className="mb-2 text-sm font-medium text-[#b1bac4]">{question}</p>
+
+      {yesHolders.length > 0 && (
+        <div className="mb-2">
+          <div className="mb-1 text-[0.7rem] font-bold text-[#3fb950]">YES</div>
+          <div className="space-y-1.5">
+            {yesHolders.map((h) => (
+              <HolderRow key={h.holder_address} h={h} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {noHolders.length > 0 && (
+        <div>
+          <div className="mb-1 text-[0.7rem] font-bold text-[#f85149]">NO</div>
+          <div className="space-y-1.5">
+            {noHolders.map((h) => (
+              <HolderRow key={h.holder_address} h={h} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HolderRow({ h }: { h: WhaleAlert }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2.5 rounded-lg bg-[#0d1117] px-3 py-2 text-xs">
+      <span className="font-mono text-[#8b949e]">
+        {truncAddr(h.holder_address)}
+      </span>
+      <span className="font-semibold text-[#f0883e]">
+        {formatUsd(h.holder_amount)} shares
+      </span>
+      {h.position_value != null && (
+        <span className="text-[#e1e4e8]">
+          ≈ {formatUsd(h.position_value)}
+        </span>
+      )}
+      <span className="text-[#6e7681]">
+        {h.holder_trades ?? "?"}次交易
+      </span>
+      <span className="text-[#6e7681]">
+        {h.holder_active_days ?? "?"}天
+      </span>
     </div>
   );
 }
