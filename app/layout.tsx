@@ -38,6 +38,12 @@ export default function RootLayout({
             >
               Polymarket上新
             </Link>
+            <Link
+              href="/whale-alerts"
+              className="text-sm text-[#8b949e] transition-colors hover:text-[#e1e4e8]"
+            >
+              大额监控
+            </Link>
           </div>
         </nav>
         {children}

@@ -42,7 +42,6 @@ export interface TraderProfile {
   pnl: number | null;
   tags: string | null;
   trades: number | null;
-  active_days: number | null;
 }
 
 export interface OutcomeSide {
@@ -74,4 +73,20 @@ export interface NewMarket {
   created_at: string | null;
   detected_at: string;
   batch_id: string | null;
+}
+
+// ── Whale Alerts (大额监控) ──
+
+export interface WhaleAlert {
+  id: number;
+  slug: string;
+  question: string;
+  url: string;
+  holder_address: string;
+  holder_name: string | null;
+  holder_amount: number;
+  holder_trades: number | null;
+  holder_active_days: number | null;
+  side: string | null;
+  detected_at: string;
 }
