@@ -14,25 +14,55 @@ export function WhaleAlertCard({
   eventTitle,
   url,
   markets,
+  isOpen,
+  onToggle,
 }: {
   eventTitle: string;
   url: string;
   markets: Map<string, WhaleAlert[]>;
+  isOpen: boolean;
+  onToggle: () => void;
 }) {
-  return (
-    <div className="rounded-xl border border-[#30363d] bg-[#161b22] p-4.5 transition-colors hover:border-[#f0883e]">
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-[0.95rem] font-semibold leading-snug text-[#e1e4e8] hover:text-[#f0883e]"
-      >
-        {eventTitle}
-      </a>
+  // Count total holders across all markets
+  let total = 0;
+  markets.forEach((holders) => (total += holders.length));
 
-      {[...markets.entries()].map(([mq, holders]) => (
-        <MarketSection key={mq} question={mq} holders={holders} />
-      ))}
+  return (
+    <div className="rounded-xl border border-[#30363d] bg-[#161b22] transition-colors hover:border-[#f0883e]">
+      <button
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 p-4.5 text-left"
+      >
+        <svg
+          className={`h-3.5 w-3.5 shrink-0 text-[#6e7681] transition-transform ${isOpen ? "rotate-90" : ""}`}
+          viewBox="0 0 16 16"
+          fill="currentColor"
+        >
+          <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
+        </svg>
+        <span className="text-[0.95rem] font-semibold leading-snug text-[#e1e4e8]">
+          {eventTitle}
+        </span>
+        <span className="ml-auto shrink-0 text-xs text-[#6e7681]">
+          {total} 条信号
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="px-4.5 pb-4.5">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mb-1 inline-block text-xs text-[#58a6ff] hover:underline"
+          >
+            Polymarket ↗
+          </a>
+          {[...markets.entries()].map(([mq, holders]) => (
+            <MarketSection key={mq} question={mq} holders={holders} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
