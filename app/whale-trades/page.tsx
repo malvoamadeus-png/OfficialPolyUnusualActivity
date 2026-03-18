@@ -9,7 +9,7 @@ export default async function WhaleTradesPage() {
     .from("whale_trades")
     .select("*")
     .order("timestamp", { ascending: false })
-    .limit(100);
+    .limit(200);
 
   const trades = (data || []) as WhaleTrade[];
 
