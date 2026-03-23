@@ -51,7 +51,7 @@ export function WhaleAlertList({ alerts }: { alerts: WhaleAlert[] }) {
     <>
       <div className="mb-5 flex items-end justify-between">
         <p className="text-sm text-[#8b949e]">
-          新账户 + 大额持仓 = 可疑信号（注册&lt;30天 · 交易&lt;20次 · 持仓&gt;$10k）
+          新账户 + 大额持仓 = 可疑信号（注册&lt;30天 · 交易&lt;20次 · 持仓&gt;$10k · 仓位价值≥$5k）
         </p>
         <button
           onClick={toggleAll}

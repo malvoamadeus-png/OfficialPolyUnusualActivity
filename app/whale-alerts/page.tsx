@@ -3,13 +3,16 @@ import { WhaleAlert } from "@/lib/types";
 import { WhaleAlertList } from "@/components/WhaleAlertList";
 
 export const dynamic = "force-dynamic";
+const MIN_POSITION_VALUE = 5_000;
+const MAX_ALERT_ROWS = 400;
 
 export default async function WhaleAlertsPage() {
   const { data } = await getSupabase()
     .from("whale_alerts")
     .select("*")
+    .gte("position_value", MIN_POSITION_VALUE)
     .order("detected_at", { ascending: false })
-    .limit(200);
+    .limit(MAX_ALERT_ROWS);
 
   const alerts = (data || []) as WhaleAlert[];
 
