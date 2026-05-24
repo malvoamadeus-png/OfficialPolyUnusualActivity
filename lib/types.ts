@@ -16,9 +16,9 @@ export interface ProbabilityChange {
   prev_price: number;
   curr_price: number;
   log_odds_diff: number;
-  analysis: ProbabilityAnalysis | null;
+  analysis?: ProbabilityAnalysis | null;
   detected_at: string;
-  analyzed_at: string | null;
+  analyzed_at?: string | null;
 }
 
 export const CATEGORIES = [

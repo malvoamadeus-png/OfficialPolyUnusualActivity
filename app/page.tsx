@@ -28,9 +28,7 @@ export default async function Home({
   return (
     <main className="mx-auto max-w-[960px] px-4 py-6">
       <h1 className="text-2xl font-bold">OdailySeer</h1>
-      <p className="mb-5 text-sm text-[#8b949e]">
-        Polymarket 概率异动监控 · AI 原因分析
-      </p>
+      <p className="mb-5 text-sm text-[#8b949e]">Polymarket 概率异动监控</p>
 
       <CategoryTabs current={selected} />
 
@@ -39,7 +37,10 @@ export default async function Home({
       ) : (
         <div className="flex flex-col gap-3.5">
           {changes.map((item) => (
-            <ChangeCard key={`${item.market_id}-${item.change_timestamp}`} item={item} />
+            <ChangeCard
+              key={`${item.market_id}-${item.change_timestamp}`}
+              item={item}
+            />
           ))}
         </div>
       )}

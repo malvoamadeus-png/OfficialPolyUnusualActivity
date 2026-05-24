@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "OdailySeer - Polymarket 概率异动监控",
-  description: "Polymarket 概率异动监控与 AI 原因分析",
+  description: "Polymarket 概率异动、上新与鲸鱼数据追踪",
 };
 
 export default function RootLayout({
@@ -36,7 +36,7 @@ export default function RootLayout({
               href="/new-markets"
               className="text-sm text-[#8b949e] transition-colors hover:text-[#e1e4e8]"
             >
-              Polymarket上新
+              Polymarket 上新
             </Link>
             <Link
               href="/whale-alerts"
