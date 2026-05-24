@@ -49,7 +49,6 @@ export function NewMarketCard({ item }: { item: NewMarket }) {
         </div>
       )}
 
-      {/* Polymarket Embed */}
       <div className="mt-3 overflow-hidden rounded-lg">
         <iframe
           title={item.question}

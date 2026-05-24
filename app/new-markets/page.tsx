@@ -17,7 +17,7 @@ export default async function NewMarketsPage() {
     <main className="mx-auto max-w-[960px] px-4 py-6">
       <h1 className="text-2xl font-bold">Polymarket上新</h1>
       <p className="mb-5 text-sm text-[#8b949e]">
-        AI 精选 · 值得关注的新预测市场
+        AI 精筛后值得关注的新预测市场
       </p>
 
       {markets.length === 0 ? (

@@ -110,3 +110,17 @@ export interface WhaleAlert {
   position_value: number | null;
   detected_at: string;
 }
+
+export interface LateMarket {
+  id: number;
+  event_id: string | null;
+  slug: string;
+  title: string;
+  url: string;
+  end_date: string;
+  volume_usd: number;
+  liquidity_usd: number | null;
+  markets_count: number | null;
+  category: string | null;
+  detected_at: string;
+}
