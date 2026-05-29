@@ -69,6 +69,9 @@ PY
 
 ## Linux Deployment
 
+Use MCP server `ssh-prod` in new Codex sessions. If it is not available, use the
+fallback SSH command documented in `docs/CODEX_LINUX_ACCESS.md`.
+
 Production path:
 
 ```text

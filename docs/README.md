@@ -9,6 +9,7 @@
 - [Agent 操作手册](D:/Coding/OdailySeer/docs/agent-operations-runbook.md)
 - [Supabase 与 AI 操作手册](D:/Coding/OdailySeer/docs/supabase-and-ai-runbook.md)
 - [前后端操作手册](D:/Coding/OdailySeer/docs/frontend-backend-operations.md)
+- [Linux 连接说明](D:/Coding/OdailySeer/docs/CODEX_LINUX_ACCESS.md)
 - [Windows 本地开发初始化](D:/Coding/OdailySeer/docs/windows-dev-bootstrap.md)
 
 ## 适用范围
