@@ -1,0 +1,22 @@
+[Unit]
+Description=OdailySeer market analyzer API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=odailyseer
+Group=odailyseer
+WorkingDirectory=/opt/OdailySeer/backend
+EnvironmentFile=/etc/odailyseer/odailyseer.env
+Environment=HOME=/home/odailyseer
+Environment=PLAYWRIGHT_BROWSERS_PATH=/home/odailyseer/.cache/ms-playwright
+ExecStart=/opt/OdailySeer/backend/.venv/bin/python -m src.main market-api
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
