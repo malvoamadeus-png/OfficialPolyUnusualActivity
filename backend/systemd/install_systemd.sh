@@ -29,7 +29,10 @@ fi
 python3 -m venv "$BACKEND_DIR/.venv"
 "$BACKEND_DIR/.venv/bin/pip" install --upgrade pip
 "$BACKEND_DIR/.venv/bin/pip" install -r "$BACKEND_DIR/requirements.txt"
-"$BACKEND_DIR/.venv/bin/python" -m playwright install chromium
+sudo -u "$APP_USER" env \
+  HOME="/home/$APP_USER" \
+  PLAYWRIGHT_BROWSERS_PATH="/home/$APP_USER/.cache/ms-playwright" \
+  "$BACKEND_DIR/.venv/bin/python" -m playwright install chromium
 
 cp "$BACKEND_DIR/systemd/odailyseer-pipeline.service" /etc/systemd/system/
 cp "$BACKEND_DIR/systemd/odailyseer-market-api.service" /etc/systemd/system/
