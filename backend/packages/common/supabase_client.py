@@ -64,6 +64,10 @@ class _QueryBuilder:
         self._params.append((column, f"gte.{self._format_value(value)}"))
         return self
 
+    def lt(self, column: str, value: Any) -> "_QueryBuilder":
+        self._params.append((column, f"lt.{self._format_value(value)}"))
+        return self
+
     def in_(self, column: str, values: list[Any]) -> "_QueryBuilder":
         encoded = ",".join(self._format_in_value(v) for v in values)
         self._params.append((column, f"in.({encoded})"))
@@ -81,6 +85,10 @@ class _QueryBuilder:
     def update(self, values: dict[str, Any]) -> "_QueryBuilder":
         self._method = "PATCH"
         self._payload = values
+        return self
+
+    def delete(self) -> "_QueryBuilder":
+        self._method = "DELETE"
         return self
 
     def upsert(self, values: Any, on_conflict: str | None = None) -> "_QueryBuilder":
@@ -333,6 +341,23 @@ class SupabaseClient:
             .data
         ) or []
         return {r["slug"] for r in rows}
+
+    def get_late_markets(self) -> list[dict[str, Any]]:
+        rows = (
+            self.client.table("late_markets")
+            .select("slug,title,end_date,category")
+            .execute()
+            .data
+        ) or []
+        return rows
+
+    def delete_expired_late_markets(self, cutoff_iso: str) -> None:
+        self.client.table("late_markets").delete().lt("end_date", cutoff_iso).execute()
+
+    def delete_late_markets_by_slugs(self, slugs: list[str]) -> None:
+        if not slugs:
+            return
+        self.client.table("late_markets").delete().in_("slug", slugs).execute()
 
     def insert_late_markets(self, markets: list[dict[str, Any]]) -> None:
         if not markets:

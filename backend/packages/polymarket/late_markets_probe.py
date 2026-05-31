@@ -12,6 +12,7 @@ from typing import Any
 import requests
 
 from packages.common.paths import RUNTIME_DIR, ensure_runtime_dirs
+from packages.polymarket.late_market_filters import is_excluded_late_market
 
 API_URL = "https://gamma-api.polymarket.com/events"
 MIN_VOLUME_USD = 100_000
@@ -55,19 +56,27 @@ def fetch_late_events(
 
         for event in batch:
             volume = _safe_float(event.get("volume"))
+            title = str(event.get("title") or "")
+            category = _infer_category(event)
             if volume < min_volume_usd:
+                continue
+            if is_excluded_late_market(
+                title=title,
+                category=category,
+                tags=_tag_slugs(event),
+            ):
                 continue
 
             matched.append(
                 {
                     "event_id": str(event.get("id", "")),
                     "slug": event.get("slug", ""),
-                    "title": event.get("title", ""),
+                    "title": title,
                     "end_date": event.get("endDate"),
                     "volume_usd": volume,
                     "liquidity_usd": _safe_float(event.get("liquidity")),
                     "markets_count": len(event.get("markets") or []),
-                    "category": _infer_category(event),
+                    "category": category,
                     "url": f"https://polymarket.com/event/{event.get('slug', '')}",
                 }
             )
@@ -87,6 +96,15 @@ def _infer_category(event: dict[str, Any]) -> str:
         if slug:
             return str(slug)
     return ""
+
+
+def _tag_slugs(event: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    for tag in event.get("tags") or []:
+        slug = (tag or {}).get("slug")
+        if slug:
+            out.append(str(slug))
+    return out
 
 
 def main() -> None:

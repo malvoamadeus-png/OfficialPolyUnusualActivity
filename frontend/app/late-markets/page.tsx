@@ -1,4 +1,5 @@
 import { LateMarketTable } from "@/components/LateMarketTable";
+import { isLateMarketVisible } from "@/lib/lateMarketFilters";
 import { getSupabase } from "@/lib/supabase";
 import { LateMarket } from "@/lib/types";
 
@@ -54,9 +55,12 @@ export default async function LateMarketsPage({
     .limit(500);
 
   const tableReady = data !== null;
+  const now = Date.now();
 
   let rows = ((data || []) as LateMarket[]).filter((row) => {
     const endDateTs = new Date(row.end_date).getTime();
+
+    if (!isLateMarketVisible(row, now)) return false;
 
     if (minVolume !== null && row.volume_usd < minVolume) return false;
     if (maxVolume !== null && row.volume_usd > maxVolume) return false;

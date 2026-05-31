@@ -11,6 +11,7 @@ import requests
 from requests import HTTPError
 
 from packages.common.supabase_client import SupabaseClient
+from packages.polymarket.late_market_filters import is_excluded_late_market
 
 API_URL = "https://gamma-api.polymarket.com/events"
 MIN_VOLUME_USD = 100_000
@@ -32,6 +33,64 @@ def _infer_category(event: dict[str, Any]) -> str:
         if slug:
             return str(slug)
     return ""
+
+
+def _tag_slugs(event: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    for tag in event.get("tags") or []:
+        slug = (tag or {}).get("slug")
+        if slug:
+            out.append(str(slug))
+    return out
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    try:
+        return datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _cleanup_stored_late_markets(sb: SupabaseClient, now: datetime) -> tuple[int, int]:
+    expired_removed = 0
+    filtered_removed = 0
+
+    existing_rows = sb.get_late_markets()
+    expired_slugs: list[str] = []
+    filtered_slugs: list[str] = []
+
+    for row in existing_rows:
+        slug = str(row.get("slug") or "").strip()
+        if not slug:
+            continue
+
+        end_at = _parse_datetime(str(row.get("end_date") or ""))
+        if end_at is not None and end_at <= now:
+            expired_slugs.append(slug)
+            continue
+
+        if is_excluded_late_market(
+            title=str(row.get("title") or ""),
+            category=str(row.get("category") or ""),
+        ):
+            filtered_slugs.append(slug)
+
+    if expired_slugs:
+        for i in range(0, len(expired_slugs), 200):
+            sb.delete_late_markets_by_slugs(expired_slugs[i:i + 200])
+        expired_removed = len(expired_slugs)
+
+    if filtered_slugs:
+        for i in range(0, len(filtered_slugs), 200):
+            sb.delete_late_markets_by_slugs(filtered_slugs[i:i + 200])
+        filtered_removed = len(filtered_slugs)
+
+    return expired_removed, filtered_removed
 
 
 def fetch_late_events(
@@ -66,8 +125,16 @@ def fetch_late_events(
             title = str(event.get("title") or "").strip()
             end_date = event.get("endDate")
             volume = _safe_float(event.get("volume"))
+            category = _infer_category(event)
+            tag_slugs = _tag_slugs(event)
 
             if not slug or not title or not end_date or volume < min_volume_usd:
+                continue
+            if is_excluded_late_market(
+                title=title,
+                category=category,
+                tags=tag_slugs,
+            ):
                 continue
 
             matched.append(
@@ -79,7 +146,7 @@ def fetch_late_events(
                     "volume_usd": volume,
                     "liquidity_usd": _safe_float(event.get("liquidity")),
                     "markets_count": len(event.get("markets") or []),
-                    "category": _infer_category(event),
+                    "category": category,
                     "url": f"https://polymarket.com/event/{slug}",
                 }
             )
@@ -122,6 +189,14 @@ def run_late_markets(sb: SupabaseClient, once: bool = False) -> None:
             f"[1/2] Scanning events ending within {WINDOW_DAYS} days "
             f"with volume >= ${MIN_VOLUME_USD:,.0f} ..."
         )
+        now = datetime.now(timezone.utc)
+        expired_removed, filtered_removed = _cleanup_stored_late_markets(sb, now)
+        if expired_removed or filtered_removed:
+            print(
+                "  Cleaned existing rows:"
+                f" expired={expired_removed}, excluded={filtered_removed}"
+            )
+
         rows = fetch_late_events()
         print(f"  Matched {len(rows)} events")
 
