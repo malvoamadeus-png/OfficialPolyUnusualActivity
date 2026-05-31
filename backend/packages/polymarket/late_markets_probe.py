@@ -58,7 +58,11 @@ def fetch_late_events(
             volume = _safe_float(event.get("volume"))
             title = str(event.get("title") or "")
             category = _infer_category(event)
+            end_date = event.get("endDate")
+            end_at = _parse_datetime(str(end_date or ""))
             if volume < min_volume_usd:
+                continue
+            if end_at is None or end_at <= now:
                 continue
             if is_excluded_late_market(
                 title=title,
@@ -72,7 +76,7 @@ def fetch_late_events(
                     "event_id": str(event.get("id", "")),
                     "slug": event.get("slug", ""),
                     "title": title,
-                    "end_date": event.get("endDate"),
+                    "end_date": end_date,
                     "volume_usd": volume,
                     "liquidity_usd": _safe_float(event.get("liquidity")),
                     "markets_count": len(event.get("markets") or []),
@@ -105,6 +109,18 @@ def _tag_slugs(event: dict[str, Any]) -> list[str]:
         if slug:
             out.append(str(slug))
     return out
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    try:
+        return datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def main() -> None:

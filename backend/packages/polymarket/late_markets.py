@@ -127,8 +127,11 @@ def fetch_late_events(
             volume = _safe_float(event.get("volume"))
             category = _infer_category(event)
             tag_slugs = _tag_slugs(event)
+            end_at = _parse_datetime(str(end_date or ""))
 
             if not slug or not title or not end_date or volume < min_volume_usd:
+                continue
+            if end_at is None or end_at <= now:
                 continue
             if is_excluded_late_market(
                 title=title,
