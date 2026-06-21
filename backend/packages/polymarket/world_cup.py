@@ -23,6 +23,7 @@ USER_PNL_API = "https://user-pnl-api.polymarket.com"
 WINDOW_HOURS = 72
 EVENT_TAG_ID = 102232
 VALIDATE_TAG_ID = 100639
+SERIES_ID = "11433"
 EVENT_SLUG_RE = re.compile(r"^fifwc-[a-z0-9]+-[a-z0-9]+-[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 REQUEST_TIMEOUT_S = 25
 HOLDERS_LIMIT = 10
@@ -131,7 +132,7 @@ def _market_metric(market: dict[str, Any], names: tuple[str, ...]) -> float | No
 
 
 def _event_start_time(event: dict[str, Any]) -> datetime | None:
-    for key in ("startDate", "startDateIso", "gameStartTime", "start_time"):
+    for key in ("gameStartTime", "endDate", "endDateIso", "startDate", "startDateIso", "start_time"):
         dt = _parse_datetime(event.get(key))
         if dt is not None:
             return dt
@@ -142,7 +143,7 @@ def _event_start_time(event: dict[str, Any]) -> datetime | None:
         for market in markets:
             if not isinstance(market, dict):
                 continue
-            for key in ("gameStartTime", "startDate", "startDateIso", "endDateIso", "endDate"):
+            for key in ("gameStartTime", "endDate", "endDateIso", "startDate", "startDateIso"):
                 dt = _parse_datetime(market.get(key))
                 if dt is not None:
                     candidates.append(dt)
@@ -236,7 +237,7 @@ def fetch_world_cup_events(session: requests.Session) -> list[dict[str, Any]]:
 
     for page in range(EVENTS_MAX_PAGES):
         params = {
-            "tag_id": EVENT_TAG_ID,
+            "series_id": SERIES_ID,
             "active": "true",
             "closed": "false",
             "limit": EVENT_PAGE_SIZE,
@@ -252,20 +253,19 @@ def fetch_world_cup_events(session: requests.Session) -> list[dict[str, Any]]:
             slug = str(event.get("slug") or "")
             if not EVENT_SLUG_RE.search(slug):
                 continue
-            if event.get("closed") is True or event.get("ended") is True:
-                continue
-            start_time = _event_start_time(event)
-            if start_time is None or start_time <= now_utc or start_time > window_end:
+            event_copy = dict(event)
+            event_id = event_copy.get("id")
+            if event_id:
+                full_event = _http_get_json(session, f"{GAMMA_API}/events/{event_id}")
+                if isinstance(full_event, dict):
+                    event_copy = full_event
+
+            if event_copy.get("closed") is True or event_copy.get("ended") is True:
                 continue
 
-            event_copy = dict(event)
-            if not isinstance(event_copy.get("markets"), list):
-                event_id = event_copy.get("id")
-                if event_id:
-                    full_event = _http_get_json(session, f"{GAMMA_API}/events/{event_id}")
-                    if isinstance(full_event, dict):
-                        event_copy = full_event
-                        start_time = _event_start_time(event_copy) or start_time
+            start_time = _event_start_time(event_copy)
+            if start_time is None or start_time <= now_utc or start_time > window_end:
+                continue
 
             event_copy["_derived_start_time"] = start_time.isoformat()
             matched.append(event_copy)
@@ -689,7 +689,7 @@ def _run_world_cup(sb: SupabaseClient, once: bool = False) -> None:
 
     print(
         f"[1/4] Fetching World Cup events "
-        f"(tag_id={EVENT_TAG_ID}, validate_tag_id={VALIDATE_TAG_ID}, window={WINDOW_HOURS}h)..."
+        f"(series_id={SERIES_ID}, validate_tag_id={VALIDATE_TAG_ID}, window={WINDOW_HOURS}h)..."
     )
     events = fetch_world_cup_events(session)
     if once:
