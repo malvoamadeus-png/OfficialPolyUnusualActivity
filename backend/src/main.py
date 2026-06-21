@@ -13,6 +13,7 @@ from packages.polymarket.market_api import run_market_api
 from packages.polymarket.new_markets import run_new_markets
 from packages.polymarket.whale_monitor import run_whale_monitor
 from packages.polymarket.whale_trades import run_whale_trades
+from packages.polymarket.world_cup import run_world_cup
 from src.scheduler import run_scheduler
 
 
@@ -36,6 +37,8 @@ def main() -> None:
     _add_once(late_markets)
     whale = sub.add_parser("whale", help="Run whale monitor pipeline")
     _add_once(whale)
+    world_cup = sub.add_parser("world-cup", help="Run world cup pipeline")
+    _add_once(world_cup)
     sub.add_parser("whale-trades", help="Run whale trades pipeline")
     sub.add_parser("late-markets-probe", help="Write a late markets probe JSON file")
     market_api = sub.add_parser("market-api", help="Run market analyzer API")
@@ -56,6 +59,8 @@ def main() -> None:
         run_late_markets(SupabaseClient(), once=args.once)
     elif args.command == "whale":
         run_whale_monitor(SupabaseClient(), once=args.once)
+    elif args.command == "world-cup":
+        run_world_cup(SupabaseClient(), once=args.once)
     elif args.command == "whale-trades":
         run_whale_trades(SupabaseClient())
     elif args.command == "late-markets-probe":

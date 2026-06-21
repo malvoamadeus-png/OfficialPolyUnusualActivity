@@ -56,6 +56,50 @@ export interface MarketAnalysis {
   sides: [OutcomeSide, OutcomeSide];
 }
 
+export interface WorldCupHolder {
+  address: string;
+  name: string;
+  amount: number;
+  address_age_days: number | null;
+  total_pnl: number | null;
+  pnl_7d: number | null;
+  pnl_30d: number | null;
+  win_rate: number | null;
+}
+
+export interface WorldCupBoardSide {
+  name: string;
+  token_id: string | null;
+  price: number | null;
+  holders: WorldCupHolder[];
+}
+
+export interface WorldCupBoardLine {
+  market_slug: string;
+  condition_id: string;
+  question: string;
+  label: string;
+  volume: number | null;
+  liquidity: number | null;
+  sides: WorldCupBoardSide[];
+  error: string | null;
+}
+
+export interface WorldCupBoards {
+  moneyline: WorldCupBoardLine[];
+  spread: WorldCupBoardLine[];
+  total: WorldCupBoardLine[];
+}
+
+export interface WorldCupMatchBoard {
+  event_slug: string;
+  event_title: string;
+  start_time: string;
+  event_url: string;
+  boards_json: WorldCupBoards;
+  updated_at: string | null;
+}
+
 // ── New Markets (Polymarket上新) ──
 
 export interface NewMarketAnalysis {

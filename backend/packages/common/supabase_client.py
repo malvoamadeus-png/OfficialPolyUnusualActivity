@@ -365,3 +365,54 @@ class SupabaseClient:
         self.client.table("late_markets").upsert(
             markets, on_conflict="slug"
         ).execute()
+
+    def get_world_cup_address_metrics(
+        self, addresses: list[str]
+    ) -> dict[str, Any]:
+        if not addresses:
+            return {}
+
+        out: dict[str, Any] = {}
+        chunk_size = 500
+        for i in range(0, len(addresses), chunk_size):
+            chunk = addresses[i:i + chunk_size]
+            rows = (
+                self.client.table("world_cup_address_metrics")
+                .select("*")
+                .in_("address", chunk)
+                .execute()
+                .data
+            ) or []
+            for row in rows:
+                address = str(row.get("address") or "").lower()
+                if address:
+                    out[address] = row
+        return out
+
+    def upsert_world_cup_address_metrics(self, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        self.client.table("world_cup_address_metrics").upsert(
+            rows, on_conflict="address"
+        ).execute()
+
+    def get_world_cup_match_board_slugs(self) -> list[str]:
+        rows = (
+            self.client.table("world_cup_match_boards")
+            .select("event_slug")
+            .execute()
+            .data
+        ) or []
+        return [str(row.get("event_slug") or "") for row in rows if row.get("event_slug")]
+
+    def upsert_world_cup_match_boards(self, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        self.client.table("world_cup_match_boards").upsert(
+            rows, on_conflict="event_slug"
+        ).execute()
+
+    def delete_world_cup_match_boards_by_event_slugs(self, event_slugs: list[str]) -> None:
+        if not event_slugs:
+            return
+        self.client.table("world_cup_match_boards").delete().in_("event_slug", event_slugs).execute()

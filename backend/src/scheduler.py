@@ -22,6 +22,8 @@ MAX_RETRIES = 1
 SCHEDULE_HOURS_BJ = [8, 10, 12, 14, 16, 18, 20, 22, 0]
 WHALE_TRADES_INTERVAL = 20 * 60
 WHALE_TRADES_PIPELINE = ("WhaleTrades", "whale-trades", "whale_trades.log", 120)
+WORLD_CUP_INTERVAL = 60 * 60
+WORLD_CUP_PIPELINE = ("WorldCup", "world-cup", "world_cup.log", 1800)
 
 
 def run_subprocess(name: str, command: str, log_file: str, timeout: int, once: bool = False) -> bool:
@@ -103,18 +105,33 @@ def _whale_trades_loop() -> None:
         time.sleep(WHALE_TRADES_INTERVAL)
 
 
+def _world_cup_loop() -> None:
+    name, command, log_file, timeout = WORLD_CUP_PIPELINE
+    while True:
+        success = run_subprocess(name, command, log_file, timeout)
+        if not success:
+            time.sleep(5)
+            run_subprocess(name, command, log_file, timeout)
+        time.sleep(WORLD_CUP_INTERVAL)
+
+
 def run_scheduler(*, once: bool = False, loop: bool = False) -> None:
     if not loop:
         run_all(once=once)
         name, command, log_file, timeout = WHALE_TRADES_PIPELINE
         run_subprocess(name, command, log_file, timeout)
+        name, command, log_file, timeout = WORLD_CUP_PIPELINE
+        run_subprocess(name, command, log_file, timeout, once)
         return
 
     print(f"=== Schedule mode: Beijing time {SCHEDULE_HOURS_BJ} ===")
     print(f"=== Whale trades: every {WHALE_TRADES_INTERVAL // 60} min ===")
+    print(f"=== World Cup boards: every {WORLD_CUP_INTERVAL // 60} min ===")
 
-    thread = threading.Thread(target=_whale_trades_loop, daemon=True)
-    thread.start()
+    whale_trades_thread = threading.Thread(target=_whale_trades_loop, daemon=True)
+    whale_trades_thread.start()
+    world_cup_thread = threading.Thread(target=_world_cup_loop, daemon=True)
+    world_cup_thread.start()
 
     print("Running main pipelines immediately on startup...\n")
     run_all(once=once)

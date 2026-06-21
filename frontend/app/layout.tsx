@@ -56,6 +56,12 @@ export default function RootLayout({
             >
               大额活动
             </Link>
+            <Link
+              href="/world-cup"
+              className="text-sm text-[#8b949e] transition-colors hover:text-[#e1e4e8]"
+            >
+              世界杯
+            </Link>
           </div>
         </nav>
         {children}
