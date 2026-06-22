@@ -373,16 +373,20 @@ class SupabaseClient:
             return {}
 
         out: dict[str, Any] = {}
-        chunk_size = 500
+        # Keep the generated REST query URL below common proxy limits.
+        chunk_size = 20
         for i in range(0, len(addresses), chunk_size):
             chunk = addresses[i:i + chunk_size]
-            rows = (
-                self.client.table("world_cup_address_metrics")
-                .select("*")
-                .in_("address", chunk)
-                .execute()
-                .data
-            ) or []
+            try:
+                rows = (
+                    self.client.table("world_cup_address_metrics")
+                    .select("*")
+                    .in_("address", chunk)
+                    .execute()
+                    .data
+                ) or []
+            except requests.RequestException:
+                rows = []
             for row in rows:
                 address = str(row.get("address") or "").lower()
                 if address:

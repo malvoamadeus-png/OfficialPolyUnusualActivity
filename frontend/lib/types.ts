@@ -79,6 +79,8 @@ export interface WorldCupBoardLine {
   condition_id: string;
   question: string;
   label: string;
+  short_label?: string | null;
+  line_value?: number | null;
   volume: number | null;
   liquidity: number | null;
   sides: WorldCupBoardSide[];

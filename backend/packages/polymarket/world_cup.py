@@ -19,12 +19,16 @@ from packages.common.supabase_client import SupabaseClient
 GAMMA_API = "https://gamma-api.polymarket.com"
 DATA_API = "https://data-api.polymarket.com"
 USER_PNL_API = "https://user-pnl-api.polymarket.com"
+SPORTS_PAGE_URL = "https://polymarket.com/zh/sports/world-cup/{event_slug}"
 
 WINDOW_HOURS = 72
-EVENT_TAG_ID = 102232
 VALIDATE_TAG_ID = 100639
 SERIES_ID = "11433"
 EVENT_SLUG_RE = re.compile(r"^fifwc-[a-z0-9]+-[a-z0-9]+-[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+NEXT_DATA_RE = re.compile(
+    r'<script id="__NEXT_DATA__" type="application/json" crossorigin="anonymous">(.*?)</script>',
+    re.S,
+)
 REQUEST_TIMEOUT_S = 25
 HOLDERS_LIMIT = 10
 EVENT_PAGE_SIZE = 100
@@ -36,6 +40,9 @@ USER_PNL_FIDELITY = "12h"
 USER_PNL_INTERVAL = "all"
 METRICS_COMPAT_VERSION = "world_cup_user_pnl_all_12h_v1"
 DEFAULT_CLOSED_POSITIONS_LIMIT = 500
+
+SPREAD_SLUG_RE = re.compile(r"-spread-(?:home|away)-(\d+)pt(\d+)$")
+TOTAL_SLUG_RE = re.compile(r"-total-(\d+)pt(\d+)$")
 
 
 def _now_utc() -> datetime:
@@ -75,7 +82,7 @@ def _http_get_json(
                 url,
                 params=params or {},
                 timeout=timeout,
-                headers={"accept": "application/json"},
+                headers={"accept": "application/json", "user-agent": "Mozilla/5.0"},
             )
             if response.status_code in {408, 425, 429, 500, 502, 503, 504}:
                 last_error = RuntimeError(f"{response.status_code}: {response.text[:300]}")
@@ -87,6 +94,33 @@ def _http_get_json(
             last_error = exc
             time.sleep(0.6 * (2 ** (attempt - 1)))
     raise RuntimeError(f"GET failed for {url} params={params}: {last_error}")
+
+
+def _http_get_text(
+    session: requests.Session,
+    url: str,
+    *,
+    timeout: int = REQUEST_TIMEOUT_S,
+    max_retries: int = 4,
+) -> str:
+    last_error: BaseException | None = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = session.get(
+                url,
+                timeout=timeout,
+                headers={"accept": "text/html", "user-agent": "Mozilla/5.0"},
+            )
+            if response.status_code in {408, 425, 429, 500, 502, 503, 504}:
+                last_error = RuntimeError(f"{response.status_code}: {response.text[:300]}")
+                time.sleep(0.6 * (2 ** (attempt - 1)))
+                continue
+            response.raise_for_status()
+            return response.text
+        except requests.RequestException as exc:
+            last_error = exc
+            time.sleep(0.6 * (2 ** (attempt - 1)))
+    raise RuntimeError(f"GET failed for {url}: {last_error}")
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -166,68 +200,71 @@ def _is_unfinished_market(market: dict[str, Any]) -> bool:
     return True
 
 
-def _market_text(market: dict[str, Any]) -> str:
-    parts = [
-        str(market.get("question") or ""),
-        str(market.get("title") or ""),
-        str(market.get("groupItemTitle") or ""),
-    ]
-    return " ".join(part for part in parts if part).strip()
-
-
-def _is_moneyline_market(market: dict[str, Any]) -> bool:
-    text = _market_text(market).lower()
-    if any(keyword in text for keyword in ("spread", "handicap", "over", "under", "o/u", "total")):
-        return False
-    if any(keyword in text for keyword in ("first to score", "score first", "both teams to score", "clean sheet")):
-        return False
-    return bool(
-        "win" in text
-        or "draw" in text
-        or "moneyline" in text
-        or "vs" in text
-        or "match result" in text
-    )
-
-
-def _is_spread_market(market: dict[str, Any]) -> bool:
-    text = _market_text(market).lower()
-    if any(keyword in text for keyword in ("spread", "handicap", "asian handicap")):
-        return True
-    return bool(re.search(r"([+-]\d+(?:\.\d+)?)", text) and "total" not in text and "over" not in text)
-
-
-def _is_total_market(market: dict[str, Any]) -> bool:
-    text = _market_text(market).lower()
-    if any(keyword in text for keyword in ("total", "over/under", "over under", "o/u")):
-        return True
-    if "over" in text and "under" in text:
-        return True
-    return False
-
-
-def _classify_market(market: dict[str, Any]) -> str | None:
-    if _is_total_market(market):
-        return "total"
-    if _is_spread_market(market):
-        return "spread"
-    if _is_moneyline_market(market):
-        return "moneyline"
-    return None
-
-
 def _market_sort_key(market: dict[str, Any]) -> tuple[float, float]:
     volume = _market_metric(market, ("volumeNum", "volume", "volume24hr", "volume1wk", "volume1mo")) or 0.0
     liquidity = _market_metric(market, ("liquidityNum", "liquidity", "liquidityClob")) or 0.0
     return (-volume, -liquidity)
 
 
-def _line_label(market: dict[str, Any]) -> str:
-    for key in ("groupItemTitle", "question", "title"):
-        value = str(market.get(key) or "").strip()
-        if value:
-            return value
-    return str(market.get("slug") or "Unknown market")
+def _format_line_value(value: float | None) -> str:
+    if value is None:
+        return "N/A"
+    if abs(value - round(value)) < 1e-9:
+        return str(int(round(value)))
+    return f"{value:.1f}".rstrip("0").rstrip(".")
+
+
+def _slug_line_value(slug: str, pattern: re.Pattern[str]) -> float | None:
+    match = pattern.search(slug)
+    if not match:
+        return None
+    whole = int(match.group(1))
+    frac = int(match.group(2))
+    digits = len(match.group(2))
+    return whole + frac / (10 ** digits)
+
+
+def _is_main_moneyline_market(event_slug: str, market: dict[str, Any]) -> bool:
+    slug = str(market.get("slug") or "")
+    prefix = f"{event_slug}-"
+    if not slug.startswith(prefix):
+        return False
+    suffix = slug[len(prefix):]
+    return bool(suffix) and "-" not in suffix
+
+
+def _is_full_game_spread_market(market: dict[str, Any]) -> bool:
+    slug = str(market.get("slug") or "")
+    return bool(SPREAD_SLUG_RE.search(slug))
+
+
+def _is_full_game_total_market(market: dict[str, Any]) -> bool:
+    slug = str(market.get("slug") or "")
+    if "-team-total-" in slug or "-first-half-" in slug or "-second-half-" in slug:
+        return False
+    return bool(TOTAL_SLUG_RE.search(slug))
+
+
+def _parse_event_teams(event_title: str) -> tuple[str | None, str | None]:
+    normalized = event_title.replace(" vs. ", " vs ").replace(" vs ", " | ")
+    parts = [part.strip() for part in normalized.split("|", 1)]
+    if len(parts) == 2 and parts[0] and parts[1]:
+        return parts[0], parts[1]
+    return None, None
+
+
+def _moneyline_sort_rank(market: dict[str, Any], home_team: str | None, away_team: str | None) -> int:
+    label = str(market.get("groupItemTitle") or market.get("question") or "").strip().lower()
+    if home_team and label == home_team.lower():
+        return 0
+    if "draw" in label:
+        return 1
+    if away_team and label == away_team.lower():
+        return 2
+    slug = str(market.get("slug") or "").lower()
+    if slug.endswith("-draw"):
+        return 1
+    return 99
 
 
 def fetch_world_cup_events(session: requests.Session) -> list[dict[str, Any]]:
@@ -277,30 +314,149 @@ def fetch_world_cup_events(session: requests.Session) -> list[dict[str, Any]]:
     return matched[:MAX_EVENTS]
 
 
-def _holders_for_market(session: requests.Session, market: dict[str, Any]) -> dict[str, Any]:
+def _fetch_child_event_ids(session: requests.Session, event_slug: str) -> list[str]:
+    html = _http_get_text(session, SPORTS_PAGE_URL.format(event_slug=event_slug), timeout=20)
+    match = NEXT_DATA_RE.search(html)
+    if not match:
+        return []
+
+    try:
+        next_data = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return []
+
+    queries = (
+        next_data.get("props", {})
+        .get("pageProps", {})
+        .get("dehydratedState", {})
+        .get("queries", [])
+    )
+    for query in queries:
+        if not isinstance(query, dict):
+            continue
+        query_key = query.get("queryKey")
+        if not isinstance(query_key, list) or not query_key:
+            continue
+        if query_key[0] != "parentToChildEventIds":
+            continue
+        state_data = (query.get("state") or {}).get("data")
+        if not isinstance(state_data, dict):
+            continue
+        child_ids = state_data.get(event_slug) or []
+        return [str(child_id) for child_id in child_ids if str(child_id)]
+    return []
+
+
+def _fetch_event_by_id(session: requests.Session, event_id: str) -> dict[str, Any] | None:
+    payload = _http_get_json(session, f"{GAMMA_API}/events/{event_id}")
+    return payload if isinstance(payload, dict) else None
+
+
+def _extract_holder_rows(
+    holders_by_token: dict[str, list[Any]],
+    token_id: str | None,
+) -> list[dict[str, Any]]:
+    if not token_id:
+        return []
+    holders = holders_by_token.get(str(token_id), [])
+    out_rows: list[dict[str, Any]] = []
+    for holder in holders[:HOLDERS_LIMIT]:
+        if not isinstance(holder, dict):
+            continue
+        address = str(holder.get("proxyWallet") or "").lower().strip()
+        if not address:
+            continue
+        out_rows.append(
+            {
+                "address": address,
+                "name": holder.get("name") or holder.get("pseudonym") or "Anonymous",
+                "amount": _safe_float(holder.get("amount")) or 0.0,
+                "address_age_days": None,
+                "total_pnl": None,
+                "pnl_7d": None,
+                "pnl_30d": None,
+                "win_rate": None,
+            }
+        )
+    out_rows.sort(key=lambda item: item["amount"], reverse=True)
+    return out_rows[:HOLDERS_LIMIT]
+
+
+def _fetch_holders_by_token(session: requests.Session, condition_id: str) -> dict[str, list[Any]]:
+    holders_payload = _http_get_json(
+        session,
+        f"{DATA_API}/holders",
+        params={"market": condition_id, "limit": HOLDERS_LIMIT},
+        timeout=20,
+    )
+    if not isinstance(holders_payload, list):
+        raise RuntimeError("invalid_holders_payload")
+    return {
+        str(block.get("token") or ""): block.get("holders") or []
+        for block in holders_payload
+        if isinstance(block, dict)
+    }
+
+
+def _build_line_base(
+    *,
+    market_slug: str,
+    condition_id: str,
+    question: str,
+    label: str,
+    short_label: str | None,
+    volume: float | None,
+    liquidity: float | None,
+    line_value: float | None,
+) -> dict[str, Any]:
+    return {
+        "market_slug": market_slug,
+        "condition_id": condition_id,
+        "question": question,
+        "label": label,
+        "short_label": short_label or label,
+        "line_value": line_value,
+        "volume": volume,
+        "liquidity": liquidity,
+        "sides": [],
+        "error": None,
+    }
+
+
+def _holders_for_market(
+    session: requests.Session,
+    market: dict[str, Any],
+    *,
+    label: str | None = None,
+    short_label: str | None = None,
+    side_names: list[str] | None = None,
+    line_value: float | None = None,
+) -> dict[str, Any]:
     question = str(market.get("question") or market.get("title") or "")
     outcomes = _parse_json_list(market.get("outcomes"))
     prices = _parse_json_list(market.get("outcomePrices"))
     token_ids = [str(token) for token in _parse_json_list(market.get("clobTokenIds"))]
     condition_id = str(market.get("conditionId") or "")
     market_slug = str(market.get("slug") or "")
-    line = {
-        "market_slug": market_slug,
-        "condition_id": condition_id,
-        "question": question,
-        "label": _line_label(market),
-        "volume": _market_metric(market, ("volumeNum", "volume", "volume24hr", "volume1wk", "volume1mo")),
-        "liquidity": _market_metric(market, ("liquidityNum", "liquidity", "liquidityClob")),
-        "sides": [],
-        "error": None,
-    }
+    line = _build_line_base(
+        market_slug=market_slug,
+        condition_id=condition_id,
+        question=question,
+        label=label or question or market_slug,
+        short_label=short_label,
+        volume=_market_metric(market, ("volumeNum", "volume", "volume24hr", "volume1wk", "volume1mo")),
+        liquidity=_market_metric(market, ("liquidityNum", "liquidity", "liquidityClob")),
+        line_value=line_value,
+    )
 
     for idx, outcome in enumerate(outcomes):
         price = _safe_float(prices[idx]) if idx < len(prices) else None
+        token_id = token_ids[idx] if idx < len(token_ids) else None
+        name = side_names[idx] if side_names and idx < len(side_names) else str(outcome)
         line["sides"].append(
             {
-                "name": str(outcome),
-                "token_id": token_ids[idx] if idx < len(token_ids) else None,
+                "name": name,
+                "token_id": token_id,
                 "price": price,
                 "holders": [],
             }
@@ -311,51 +467,107 @@ def _holders_for_market(session: requests.Session, market: dict[str, Any]) -> di
         return line
 
     try:
-        holders_payload = _http_get_json(
-            session,
-            f"{DATA_API}/holders",
-            params={"market": condition_id, "limit": HOLDERS_LIMIT},
-            timeout=20,
-        )
+        holders_by_token = _fetch_holders_by_token(session, condition_id)
     except Exception as exc:
         line["error"] = str(exc)
         return line
 
-    if not isinstance(holders_payload, list):
-        line["error"] = "invalid_holders_payload"
-        return line
-
-    holders_by_token = {
-        str(block.get("token") or ""): block.get("holders") or []
-        for block in holders_payload
-        if isinstance(block, dict)
-    }
-
     for side in line["sides"]:
-        holders = holders_by_token.get(str(side.get("token_id") or ""), [])
-        out_rows = []
-        for holder in holders[:HOLDERS_LIMIT]:
-            if not isinstance(holder, dict):
-                continue
-            address = str(holder.get("proxyWallet") or "").lower().strip()
-            if not address:
-                continue
-            out_rows.append(
-                {
-                    "address": address,
-                    "name": holder.get("name") or holder.get("pseudonym") or "Anonymous",
-                    "amount": _safe_float(holder.get("amount")) or 0.0,
-                    "address_age_days": None,
-                    "total_pnl": None,
-                    "pnl_7d": None,
-                    "pnl_30d": None,
-                    "win_rate": None,
-                }
-            )
-        out_rows.sort(key=lambda item: item["amount"], reverse=True)
-        side["holders"] = out_rows[:HOLDERS_LIMIT]
+        side["holders"] = _extract_holder_rows(holders_by_token, side.get("token_id"))
 
     return line
+
+
+def _build_moneyline_line(
+    session: requests.Session,
+    event: dict[str, Any],
+    moneyline_markets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    event_slug = str(event.get("slug") or "")
+    event_title = str(event.get("title") or event_slug)
+    home_team, away_team = _parse_event_teams(event_title)
+
+    ordered_markets = sorted(
+        moneyline_markets,
+        key=lambda market: (
+            _moneyline_sort_rank(market, home_team, away_team),
+            *_market_sort_key(market),
+        ),
+    )
+    line = _build_line_base(
+        market_slug=f"{event_slug}-moneyline",
+        condition_id="",
+        question=event_title,
+        label="常规时间 胜平负",
+        short_label="Moneyline",
+        volume=sum(_market_metric(m, ("volumeNum", "volume", "volume24hr", "volume1wk", "volume1mo")) or 0.0 for m in ordered_markets),
+        liquidity=sum(_market_metric(m, ("liquidityNum", "liquidity", "liquidityClob")) or 0.0 for m in ordered_markets),
+        line_value=None,
+    )
+
+    errors: list[str] = []
+    for market in ordered_markets:
+        outcomes = _parse_json_list(market.get("outcomes"))
+        prices = _parse_json_list(market.get("outcomePrices"))
+        token_ids = [str(token) for token in _parse_json_list(market.get("clobTokenIds"))]
+        condition_id = str(market.get("conditionId") or "")
+        if not condition_id or not token_ids or not outcomes:
+            errors.append(f"{market.get('slug')}:missing_condition_or_tokens")
+            continue
+
+        side_name = str(market.get("groupItemTitle") or outcomes[0] or "Unknown")
+        if "draw" in side_name.lower():
+            side_name = "Draw"
+        price = _safe_float(prices[0]) if prices else None
+        side = {
+            "name": side_name,
+            "token_id": token_ids[0],
+            "price": price,
+            "holders": [],
+        }
+        try:
+            holders_by_token = _fetch_holders_by_token(session, condition_id)
+            side["holders"] = _extract_holder_rows(holders_by_token, token_ids[0])
+        except Exception as exc:
+            errors.append(f"{market.get('slug')}:{exc}")
+        line["sides"].append(side)
+
+    if errors:
+        line["error"] = "; ".join(errors[:5])
+    return line
+
+
+def _spread_side_names(market: dict[str, Any], line_value: float) -> list[str]:
+    outcomes = [str(item) for item in _parse_json_list(market.get("outcomes"))]
+    if len(outcomes) >= 2:
+        value_text = _format_line_value(line_value)
+        return [f"{outcomes[0]} -{value_text}", f"{outcomes[1]} +{value_text}"]
+    return outcomes
+
+
+def _build_spread_line(session: requests.Session, market: dict[str, Any], line_value: float) -> dict[str, Any]:
+    side_names = _spread_side_names(market, line_value)
+    short_label = side_names[0] if side_names else f"Spread {_format_line_value(line_value)}"
+    return _holders_for_market(
+        session,
+        market,
+        label=" / ".join(side_names) if side_names else short_label,
+        short_label=short_label,
+        side_names=side_names,
+        line_value=line_value,
+    )
+
+
+def _build_total_line(session: requests.Session, market: dict[str, Any], line_value: float) -> dict[str, Any]:
+    value_text = _format_line_value(line_value)
+    return _holders_for_market(
+        session,
+        market,
+        label=f"O/U {value_text}",
+        short_label=value_text,
+        side_names=[f"O {value_text}", f"U {value_text}"],
+        line_value=line_value,
+    )
 
 
 def _interpolate_pnl_at(points: list[tuple[datetime, float]], target: datetime) -> float | None:
@@ -565,55 +777,109 @@ def _collect_unique_addresses(boards_by_event: dict[str, dict[str, Any]]) -> lis
     return ordered
 
 
+def _build_event_context(session: requests.Session, event: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
+    event_slug = str(event.get("slug") or "")
+    start_time = str(event.get("_derived_start_time") or "")
+    tags = event.get("tags") or []
+    tag_ids = {int(tag.get("id")) for tag in tags if isinstance(tag, dict) and _safe_float(tag.get("id")) is not None}
+    validated = 1 if VALIDATE_TAG_ID in tag_ids else 0
+
+    row = {
+        "event_slug": event_slug,
+        "event_title": str(event.get("title") or event_slug),
+        "start_time": start_time,
+        "event_url": SPORTS_PAGE_URL.format(event_slug=event_slug),
+        "boards_json": {"moneyline": [], "spread": [], "total": []},
+        "updated_at": _now_utc().isoformat(),
+    }
+
+    tasks: list[dict[str, Any]] = []
+    moneyline_markets = [
+        market
+        for market in (event.get("markets") or [])
+        if isinstance(market, dict) and _is_unfinished_market(market) and _is_main_moneyline_market(event_slug, market)
+    ]
+    if moneyline_markets:
+        tasks.append({"event_slug": event_slug, "board_type": "moneyline", "task_type": "moneyline", "event": event, "markets": moneyline_markets})
+
+    try:
+        child_event_ids = _fetch_child_event_ids(session, event_slug)
+    except Exception:
+        child_event_ids = []
+
+    child_events: list[dict[str, Any]] = []
+    for child_event_id in child_event_ids:
+        try:
+            child_event = _fetch_event_by_id(session, child_event_id)
+        except Exception:
+            child_event = None
+        if child_event:
+            child_events.append(child_event)
+
+    for child_event in child_events:
+        for market in child_event.get("markets") or []:
+            if not isinstance(market, dict) or not _is_unfinished_market(market):
+                continue
+
+            spread_value = _slug_line_value(str(market.get("slug") or ""), SPREAD_SLUG_RE)
+            if spread_value is not None and _is_full_game_spread_market(market):
+                tasks.append(
+                    {
+                        "event_slug": event_slug,
+                        "board_type": "spread",
+                        "task_type": "spread",
+                        "market": market,
+                        "line_value": spread_value,
+                    }
+                )
+                continue
+
+            total_value = _slug_line_value(str(market.get("slug") or ""), TOTAL_SLUG_RE)
+            if total_value is not None and _is_full_game_total_market(market):
+                tasks.append(
+                    {
+                        "event_slug": event_slug,
+                        "board_type": "total",
+                        "task_type": "total",
+                        "market": market,
+                        "line_value": total_value,
+                    }
+                )
+
+    return row, tasks, validated
+
+
+def _fetch_line_for_task(session: requests.Session, task: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
+    event_slug = str(task["event_slug"])
+    board_type = str(task["board_type"])
+    task_type = str(task["task_type"])
+
+    if task_type == "moneyline":
+        line = _build_moneyline_line(session, task["event"], task["markets"])
+    elif task_type == "spread":
+        line = _build_spread_line(session, task["market"], float(task["line_value"]))
+    elif task_type == "total":
+        line = _build_total_line(session, task["market"], float(task["line_value"]))
+    else:
+        raise RuntimeError(f"unsupported task_type={task_type}")
+    return event_slug, board_type, line
+
+
 def _build_match_boards(session: requests.Session, events: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], int]:
     event_rows: dict[str, dict[str, Any]] = {}
-    markets_to_fetch: list[tuple[str, str, dict[str, Any]]] = []
+    holder_tasks: list[dict[str, Any]] = []
     validated_count = 0
 
-    for event in events:
-        event_slug = str(event.get("slug") or "")
-        start_time = str(event.get("_derived_start_time") or "")
-        if not event_slug or not start_time:
-            continue
-        tags = event.get("tags") or []
-        tag_ids = {int(tag.get("id")) for tag in tags if isinstance(tag, dict) and _safe_float(tag.get("id")) is not None}
-        if VALIDATE_TAG_ID in tag_ids:
-            validated_count += 1
-
-        event_rows[event_slug] = {
-            "event_slug": event_slug,
-            "event_title": str(event.get("title") or event_slug),
-            "start_time": start_time,
-            "event_url": f"https://polymarket.com/event/{event_slug}",
-            "boards_json": {"moneyline": [], "spread": [], "total": []},
-            "updated_at": _now_utc().isoformat(),
-        }
-
-        markets = event.get("markets") or []
-        typed_markets: dict[str, list[dict[str, Any]]] = {"moneyline": [], "spread": [], "total": []}
-        for market in markets:
-            if not isinstance(market, dict):
-                continue
-            if not _is_unfinished_market(market):
-                continue
-            board_type = _classify_market(market)
-            if board_type is None:
-                continue
-            if not market.get("conditionId"):
-                continue
-            typed_markets[board_type].append(market)
-
-        for board_type, board_markets in typed_markets.items():
-            board_markets.sort(key=_market_sort_key)
-            for market in board_markets:
-                markets_to_fetch.append((event_slug, board_type, market))
-
-    def fetch_one(task: tuple[str, str, dict[str, Any]]) -> tuple[str, str, dict[str, Any]]:
-        event_slug, board_type, market = task
-        return event_slug, board_type, _holders_for_market(session, market)
+    with ThreadPoolExecutor(max_workers=max(2, min(MAX_WORKERS, len(events) or 1))) as pool:
+        futures = {pool.submit(_build_event_context, session, event): event for event in events}
+        for future in as_completed(futures):
+            row, tasks, validated = future.result()
+            event_rows[row["event_slug"]] = row
+            holder_tasks.extend(tasks)
+            validated_count += validated
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {pool.submit(fetch_one, task): task for task in markets_to_fetch}
+        futures = {pool.submit(_fetch_line_for_task, session, task): task for task in holder_tasks}
         for future in as_completed(futures):
             event_slug, board_type, line = future.result()
             row = event_rows.get(event_slug)
@@ -622,11 +888,13 @@ def _build_match_boards(session: requests.Session, events: list[dict[str, Any]])
             row["boards_json"][board_type].append(line)
 
     for row in event_rows.values():
-        for board_type in ("moneyline", "spread", "total"):
+        row["boards_json"]["moneyline"].sort(key=lambda item: (-float(item.get("volume") or 0.0), row["start_time"]))
+        for board_type in ("spread", "total"):
             row["boards_json"][board_type].sort(
                 key=lambda item: (
                     -float(item.get("volume") or 0.0),
                     -float(item.get("liquidity") or 0.0),
+                    float(item.get("line_value") or 0.0),
                     str(item.get("label") or ""),
                 )
             )
@@ -640,7 +908,10 @@ def _refresh_address_metrics(
     boards_by_event: dict[str, dict[str, Any]],
 ) -> tuple[dict[str, dict[str, Any]], int, int]:
     addresses = _collect_unique_addresses(boards_by_event)
-    cached_rows = sb.get_world_cup_address_metrics(addresses)
+    try:
+        cached_rows = sb.get_world_cup_address_metrics(addresses)
+    except Exception:
+        cached_rows = {}
 
     metrics_by_address: dict[str, dict[str, Any]] = {}
     fresh_cache_hits = 0
@@ -664,12 +935,18 @@ def _refresh_address_metrics(
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
             futures = {pool.submit(fetch_one, address): address for address in to_refresh}
             for future in as_completed(futures):
-                address, metric, cache_row = future.result()
+                try:
+                    address, metric, cache_row = future.result()
+                except Exception:
+                    continue
                 metrics_by_address[address] = metric
                 upsert_rows.append(cache_row)
 
     if upsert_rows:
-        sb.upsert_world_cup_address_metrics(upsert_rows)
+        try:
+            sb.upsert_world_cup_address_metrics(upsert_rows)
+        except Exception:
+            pass
 
     _enrich_holders_with_metrics(boards_by_event, metrics_by_address)
     return metrics_by_address, fresh_cache_hits, len(to_refresh)
