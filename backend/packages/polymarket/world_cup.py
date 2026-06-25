@@ -371,6 +371,7 @@ def _extract_holder_rows(
                 "address": address,
                 "name": holder.get("name") or holder.get("pseudonym") or "Anonymous",
                 "amount": _safe_float(holder.get("amount")) or 0.0,
+                "quantity": _safe_float(holder.get("amount")) or 0.0,
                 "address_age_days": None,
                 "total_pnl": None,
                 "pnl_7d": None,
@@ -380,6 +381,16 @@ def _extract_holder_rows(
         )
     out_rows.sort(key=lambda item: item["amount"], reverse=True)
     return out_rows[:HOLDERS_LIMIT]
+
+
+def _attach_holder_value(holders: list[dict[str, Any]], price: float | None) -> None:
+    if price is None or not math.isfinite(price):
+        for holder in holders:
+            holder["amount"] = None
+        return
+    for holder in holders:
+        quantity = _safe_float(holder.get("quantity"))
+        holder["amount"] = (quantity * price) if quantity is not None else None
 
 
 def _fetch_holders_by_token(session: requests.Session, condition_id: str) -> dict[str, list[Any]]:
@@ -474,6 +485,7 @@ def _holders_for_market(
 
     for side in line["sides"]:
         side["holders"] = _extract_holder_rows(holders_by_token, side.get("token_id"))
+        _attach_holder_value(side["holders"], _safe_float(side.get("price")))
 
     return line
 
@@ -528,6 +540,7 @@ def _build_moneyline_line(
         try:
             holders_by_token = _fetch_holders_by_token(session, condition_id)
             side["holders"] = _extract_holder_rows(holders_by_token, token_ids[0])
+            _attach_holder_value(side["holders"], price)
         except Exception as exc:
             errors.append(f"{market.get('slug')}:{exc}")
         line["sides"].append(side)

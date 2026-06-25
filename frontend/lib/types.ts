@@ -60,6 +60,7 @@ export interface WorldCupHolder {
   address: string;
   name: string;
   amount: number;
+  quantity?: number | null;
   address_age_days: number | null;
   total_pnl: number | null;
   pnl_7d: number | null;

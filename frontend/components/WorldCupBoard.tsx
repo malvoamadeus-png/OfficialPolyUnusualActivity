@@ -374,7 +374,7 @@ function HolderRow({ holder, rank }: { holder: WorldCupHolder; rank: number }) {
       </div>
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs md:grid-cols-3">
-        <Metric label="持仓" value={formatCompactDollar(holder.amount)} />
+        <Metric label="持仓金额" value={formatCompactDollar(holder.amount)} />
         <Metric label="地址年龄" value={formatAge(holder.address_age_days)} />
         <Metric label="胜率" value={formatRate(holder.win_rate)} />
         <Metric label="总盈利" value={formatSignedDollar(holder.total_pnl)} />
