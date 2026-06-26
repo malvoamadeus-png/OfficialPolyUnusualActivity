@@ -13,6 +13,16 @@ const GROUPS = [
   { key: "total", label: "总分", accent: "from-[#f8f1df] to-[#e4c883]" },
 ] as const;
 
+const HOLDER_FILTER_OPTIONS = [
+  { label: "全部", value: 0 },
+  { label: "1万美元", value: 10_000 },
+  { label: "3万美元", value: 30_000 },
+  { label: "5万美元", value: 50_000 },
+  { label: "10万美元", value: 100_000 },
+  { label: "20万美元", value: 200_000 },
+  { label: "50万美元", value: 500_000 },
+] as const;
+
 function lineKey(eventSlug: string, boardType: string, line: WorldCupBoardLine): string {
   return `${eventSlug}:${boardType}:${line.condition_id || line.market_slug || line.label}`;
 }
@@ -21,10 +31,16 @@ export function WorldCupBoard({ matches }: { matches: WorldCupMatchBoard[] }) {
   const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
   const [expandedDetails, setExpandedDetails] = useState<Set<string>>(new Set());
   const [selectedLines, setSelectedLines] = useState<Record<string, string>>({});
+  const [holderThreshold, setHolderThreshold] = useState<number>(0);
+
+  const filteredMatches = useMemo(
+    () => matches.map((match) => filterMatchByHolderAmount(match, holderThreshold)).filter(isNonNull),
+    [matches, holderThreshold]
+  );
 
   const allLineKeys = useMemo(() => {
     const keys = new Set<string>();
-    for (const match of matches) {
+    for (const match of filteredMatches) {
       for (const group of GROUPS) {
         for (const line of match.boards_json[group.key]) {
           keys.add(lineKey(match.event_slug, group.key, line));
@@ -32,7 +48,7 @@ export function WorldCupBoard({ matches }: { matches: WorldCupMatchBoard[] }) {
       }
     }
     return keys;
-  }, [matches]);
+  }, [filteredMatches]);
 
   function toggleEvent(eventSlug: string) {
     setExpandedEvents((prev) => {
@@ -59,7 +75,7 @@ export function WorldCupBoard({ matches }: { matches: WorldCupMatchBoard[] }) {
   }
 
   function expandAll() {
-    setExpandedEvents(new Set(matches.map((match) => match.event_slug)));
+    setExpandedEvents(new Set(filteredMatches.map((match) => match.event_slug)));
     setExpandedDetails(new Set(allLineKeys));
   }
 
@@ -85,7 +101,26 @@ export function WorldCupBoard({ matches }: { matches: WorldCupMatchBoard[] }) {
               展示北京时间未来 72 小时内尚未开赛的世界杯比赛，以及 Moneyline、让分、总分盘口的 Top Holder。
             </p>
           </div>
-          <div className="flex shrink-0 gap-2">
+          <div className="flex flex-col items-stretch gap-3 md:items-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              {HOLDER_FILTER_OPTIONS.map((option) => {
+                const active = holderThreshold === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    onClick={() => setHolderThreshold(option.value)}
+                    className={`rounded-full px-3 py-2 text-sm font-medium transition ${
+                      active
+                        ? "border border-[#6eb0ff] bg-[#173152] text-white shadow-[0_8px_20px_rgba(24,52,92,0.28)]"
+                        : "border border-[#31435d] bg-[#121c2b] text-[#a9bad3] hover:border-[#4c6586] hover:text-white"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex shrink-0 gap-2">
             <button
               onClick={expandAll}
               className="rounded-full border border-[#35517c] bg-[#16243a] px-4 py-2 text-sm text-[#dbe7fb] transition hover:border-[#68a4ff] hover:text-white"
@@ -98,11 +133,17 @@ export function WorldCupBoard({ matches }: { matches: WorldCupMatchBoard[] }) {
             >
               全部收起
             </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {matches.map((match) => {
+      {filteredMatches.length === 0 ? (
+        <div className="rounded-[24px] border border-dashed border-[#31435d] bg-[linear-gradient(180deg,#0e1521,#101925)] px-6 py-12 text-center text-[#94a7c3]">
+          当前筛选下没有符合条件的持仓
+        </div>
+      ) : (
+      filteredMatches.map((match) => {
         const isExpanded = expandedEvents.has(match.event_slug);
         return (
           <section
@@ -157,7 +198,7 @@ export function WorldCupBoard({ matches }: { matches: WorldCupMatchBoard[] }) {
             )}
           </section>
         );
-      })}
+      }))}
     </div>
   );
 }
@@ -182,6 +223,9 @@ function GroupPanel({
   onSelectLine: (matchSlug: string, boardType: string, key: string) => void;
 }) {
   const lines = match.boards_json[boardType];
+  if (lines.length === 0) {
+    return null;
+  }
   const totalVolume = lines.reduce((sum, line) => sum + (line.volume || 0), 0);
   const selected =
     lines.find((line) => lineKey(match.event_slug, boardType, line) === selectedLineKey) ||
@@ -199,11 +243,7 @@ function GroupPanel({
           </div>
         </div>
 
-        {lines.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#c8d1dc] bg-[#f6f8fb] px-4 py-4 text-sm text-[#718095]">
-            暂无盘口 / 暂无数据
-          </div>
-        ) : boardType === "moneyline" ? (
+        {boardType === "moneyline" ? (
           <div className="grid w-full gap-3 md:max-w-[560px] md:grid-cols-3">
             {lines[0].sides.map((side) => (
               <div
@@ -482,4 +522,62 @@ function formatSignedDollar(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return "N/A";
   const prefix = value > 0 ? "+" : value < 0 ? "-" : "";
   return `${prefix}${formatCompactDollar(Math.abs(value))}`;
+}
+
+function filterMatchByHolderAmount(
+  match: WorldCupMatchBoard,
+  threshold: number
+): WorldCupMatchBoard | null {
+  if (threshold <= 0) {
+    return match;
+  }
+
+  const boards_json = {
+    moneyline: filterLinesByHolderAmount(match.boards_json.moneyline, threshold),
+    spread: filterLinesByHolderAmount(match.boards_json.spread, threshold),
+    total: filterLinesByHolderAmount(match.boards_json.total, threshold),
+  };
+
+  const visibleCount =
+    boards_json.moneyline.length + boards_json.spread.length + boards_json.total.length;
+
+  if (visibleCount <= 0) {
+    return null;
+  }
+
+  return {
+    ...match,
+    boards_json,
+  };
+}
+
+function filterLinesByHolderAmount(
+  lines: WorldCupBoardLine[],
+  threshold: number
+): WorldCupBoardLine[] {
+  return lines
+    .map((line) => {
+      const sides = line.sides
+        .map((side) => ({
+          ...side,
+          holders: side.holders.filter(
+            (holder) => holder.amount !== null && Number.isFinite(holder.amount) && holder.amount >= threshold
+          ),
+        }))
+        .filter((side) => side.holders.length > 0);
+
+      if (sides.length <= 0) {
+        return null;
+      }
+
+      return {
+        ...line,
+        sides,
+      };
+    })
+    .filter(isNonNull);
+}
+
+function isNonNull<T>(value: T | null): value is T {
+  return value !== null;
 }
