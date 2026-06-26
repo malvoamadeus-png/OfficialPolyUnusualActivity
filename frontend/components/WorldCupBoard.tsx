@@ -375,23 +375,58 @@ function HolderRow({ holder, rank }: { holder: WorldCupHolder; rank: number }) {
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs md:grid-cols-3">
         <Metric label="持仓金额" value={formatCompactDollar(holder.amount)} />
-        <Metric label="地址年龄" value={formatAge(holder.address_age_days)} />
+        <Metric
+          label="地址年龄"
+          value={formatAge(holder.address_age_days)}
+          highlight={isAddressAgeHot(holder.address_age_days)}
+        />
         <Metric label="胜率" value={formatRate(holder.win_rate)} />
-        <Metric label="总盈利" value={formatSignedDollar(holder.total_pnl)} />
-        <Metric label="7天盈利" value={formatSignedDollar(holder.pnl_7d)} />
-        <Metric label="30天盈利" value={formatSignedDollar(holder.pnl_30d)} />
+        <Metric
+          label="总盈利"
+          value={formatSignedDollar(holder.total_pnl)}
+          highlight={isPnlHot(holder.total_pnl, 1_000_000)}
+        />
+        <Metric
+          label="7天盈利"
+          value={formatSignedDollar(holder.pnl_7d)}
+          highlight={isPnlHot(holder.pnl_7d, 200_000)}
+        />
+        <Metric
+          label="30天盈利"
+          value={formatSignedDollar(holder.pnl_30d)}
+          highlight={isPnlHot(holder.pnl_30d, 400_000)}
+        />
       </div>
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  const emphasis = highlight ? "text-[#d1242f] font-bold" : "text-[#172233] font-medium";
   return (
     <div>
-      <div className="mb-1 text-[#7b8797]">{label}</div>
-      <div className="font-medium text-[#172233]">{value}</div>
+      <div className={`mb-1 ${highlight ? "text-[#d1242f] font-bold" : "text-[#7b8797]"}`}>
+        {label}
+      </div>
+      <div className={emphasis}>{value}</div>
     </div>
   );
+}
+
+function isAddressAgeHot(value: number | null): boolean {
+  return value !== null && Number.isFinite(value) && value < 30;
+}
+
+function isPnlHot(value: number | null, threshold: number): boolean {
+  return value !== null && Number.isFinite(value) && value > threshold;
 }
 
 function countLines(match: WorldCupMatchBoard): number {
