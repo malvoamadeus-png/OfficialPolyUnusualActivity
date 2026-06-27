@@ -103,6 +103,25 @@ export interface WorldCupMatchBoard {
   updated_at: string | null;
 }
 
+export interface WorldCupFinishedPosition {
+  id: number;
+  event_slug: string;
+  event_title: string;
+  event_end_time: string;
+  event_url: string;
+  board_type: "moneyline" | "spread" | "total" | string;
+  market_slug: string;
+  condition_id: string;
+  market_question: string;
+  market_label: string;
+  outcome_name: string | null;
+  address: string;
+  bet_amount: number | null;
+  profit_amount: number;
+  position_closed_at: string | null;
+  scanned_at: string | null;
+}
+
 // ── New Markets (Polymarket上新) ──
 
 export interface NewMarketAnalysis {

@@ -76,6 +76,7 @@ MAX_TRADES = _env_int("WHALE_MAX_TRADES", 20, 1)
 MAX_ACTIVE_DAYS = _env_int("WHALE_MAX_ACTIVE_DAYS", 30, 1)
 HOLDERS_LIMIT = _env_int("WHALE_HOLDERS_LIMIT", 5, 1)
 DEDUP_HOURS = _env_int("WHALE_DEDUP_HOURS", 48, 1)
+RETENTION_HOURS = _env_int("WHALE_RETENTION_HOURS", 48, 1)
 MAX_WORKERS = _env_int("WHALE_MAX_WORKERS", 8, 1)
 USER_STATS_DB_TTL_HOURS = _env_int("WHALE_USER_STATS_DB_TTL_HOURS", 24, 1)
 MARKET_TASK_CACHE_TTL_HOURS = _env_int("WHALE_MARKET_TASK_CACHE_TTL_HOURS", 4, 0)
@@ -430,6 +431,13 @@ def _build_stats_from_profile(profile: dict[str, Any], ttl_seconds: float) -> di
 
 # Core logic
 def _run_whale_monitor(sb: SupabaseClient, once: bool = False):
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=RETENTION_HOURS)).isoformat()
+    try:
+        sb.delete_old_whale_alerts(cutoff_iso)
+        print(f"  Pruned whale_alerts older than {RETENTION_HOURS}h")
+    except Exception as e:
+        print(f"  whale_alert prune skipped: {e}")
+
     # Step 1: Build or reuse market tasks
     snapshot_key = "once"
     cached = None if once else _load_market_tasks_cache()

@@ -5,12 +5,15 @@ import { WhaleAlertList } from "@/components/WhaleAlertList";
 export const dynamic = "force-dynamic";
 const MIN_POSITION_VALUE = 5_000;
 const MAX_ALERT_ROWS = 400;
+const RETENTION_HOURS = 48;
 
 export default async function WhaleAlertsPage() {
+  const cutoffIso = new Date(Date.now() - RETENTION_HOURS * 60 * 60 * 1000).toISOString();
   const { data } = await getSupabase()
     .from("whale_alerts")
     .select("*")
     .gte("position_value", MIN_POSITION_VALUE)
+    .gte("detected_at", cutoffIso)
     .order("detected_at", { ascending: false })
     .limit(MAX_ALERT_ROWS);
 

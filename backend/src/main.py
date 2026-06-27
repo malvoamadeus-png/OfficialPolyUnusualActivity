@@ -11,6 +11,10 @@ from packages.polymarket.late_markets import run_late_markets
 from packages.polymarket.late_markets_probe import main as run_late_markets_probe
 from packages.polymarket.market_api import run_market_api
 from packages.polymarket.new_markets import run_new_markets
+from packages.polymarket.world_cup_finished import (
+    run_world_cup_finished,
+    run_world_cup_finished_sync,
+)
 from packages.polymarket.whale_monitor import run_whale_monitor
 from packages.polymarket.whale_trades import run_whale_trades
 from packages.polymarket.world_cup import run_world_cup
@@ -39,6 +43,39 @@ def main() -> None:
     _add_once(whale)
     world_cup = sub.add_parser("world-cup", help="Run world cup pipeline")
     _add_once(world_cup)
+    world_cup_finished = sub.add_parser(
+        "world-cup-finished",
+        help="Report profitable addresses for finished World Cup spread markets",
+    )
+    _add_once(world_cup_finished)
+    world_cup_finished.add_argument(
+        "--date",
+        default="today",
+        help="Beijing date: today / yesterday / YYYY-MM-DD",
+    )
+    world_cup_finished.add_argument(
+        "--min-profit",
+        type=float,
+        default=30000.0,
+        help="Minimum realized profit in USD",
+    )
+    world_cup_finished_sync = sub.add_parser(
+        "world-cup-finished-sync",
+        help="Persist finished World Cup winners from the recent lookback window",
+    )
+    _add_once(world_cup_finished_sync)
+    world_cup_finished_sync.add_argument(
+        "--hours",
+        type=int,
+        default=48,
+        help="Lookback window in hours for finished World Cup events",
+    )
+    world_cup_finished_sync.add_argument(
+        "--min-profit",
+        type=float,
+        default=30000.0,
+        help="Minimum realized profit in USD",
+    )
     sub.add_parser("whale-trades", help="Run whale trades pipeline")
     sub.add_parser("late-markets-probe", help="Write a late markets probe JSON file")
     market_api = sub.add_parser("market-api", help="Run market analyzer API")
@@ -61,6 +98,19 @@ def main() -> None:
         run_whale_monitor(SupabaseClient(), once=args.once)
     elif args.command == "world-cup":
         run_world_cup(SupabaseClient(), once=args.once)
+    elif args.command == "world-cup-finished":
+        run_world_cup_finished(
+            target_date_expr=args.date,
+            min_profit=args.min_profit,
+            once=args.once,
+        )
+    elif args.command == "world-cup-finished-sync":
+        run_world_cup_finished_sync(
+            SupabaseClient(),
+            lookback_hours=args.hours,
+            min_profit=args.min_profit,
+            once=args.once,
+        )
     elif args.command == "whale-trades":
         run_whale_trades(SupabaseClient())
     elif args.command == "late-markets-probe":

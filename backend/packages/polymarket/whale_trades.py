@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import requests
 
 from packages.common.supabase_client import SupabaseClient
@@ -18,6 +20,13 @@ PARAMS = {
 
 
 def _run_whale_trades(sb: SupabaseClient):
+    cutoff_ts = int((datetime.now(timezone.utc) - timedelta(hours=48)).timestamp())
+    try:
+        sb.delete_old_whale_trades(cutoff_ts)
+        print("  Pruned whale_trades older than 48h")
+    except Exception as e:
+        print(f"  whale_trades prune skipped: {e}")
+
     print("[1/3] Fetching large trades from Polymarket...")
     resp = requests.get(API_URL, params=PARAMS, timeout=30)
     resp.raise_for_status()

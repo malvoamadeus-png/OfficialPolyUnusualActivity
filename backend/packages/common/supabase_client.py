@@ -8,7 +8,9 @@ without requiring packages that currently need local C++ build tools.
 from __future__ import annotations
 
 import json
+import math
 import os
+import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -175,6 +177,7 @@ class SupabaseClient:
         env_paths = self._load_env_file()
         url = os.getenv("SUPABASE_URL")
         key = os.getenv("SUPABASE_SERVICE_KEY")
+        self.db_url = os.getenv("SUPABASE_DB_URL")
         if not url or not key:
             checked = ", ".join(str(p) for p in env_paths)
             raise ValueError(
@@ -189,6 +192,42 @@ class SupabaseClient:
             "Content-Type": "application/json",
         }
         self.client = _RestClient(rest_url, headers)
+
+    def _run_psql(self, sql: str, *, tuples_only: bool = False) -> str:
+        if not self.db_url:
+            raise ValueError("Missing SUPABASE_DB_URL for direct Postgres access")
+        cmd = ["psql", self.db_url, "-X", "-v", "ON_ERROR_STOP=1"]
+        if tuples_only:
+            cmd.extend(["-A", "-t"])
+        env = dict(os.environ)
+        env.setdefault("PGCONNECT_TIMEOUT", "15")
+        proc = subprocess.run(
+            cmd,
+            input=sql,
+            text=True,
+            capture_output=True,
+            timeout=60,
+            env=env,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "psql failed")
+        return proc.stdout
+
+    @staticmethod
+    def _sql_literal(value: Any) -> str:
+        if value is None:
+            return "NULL"
+        if isinstance(value, bool):
+            return "TRUE" if value else "FALSE"
+        if isinstance(value, (int, float)):
+            numeric = float(value)
+            if not math.isfinite(numeric):
+                return "NULL"
+            if isinstance(value, int) or numeric.is_integer():
+                return str(int(numeric))
+            return repr(numeric)
+        text = str(value).replace("'", "''")
+        return f"'{text}'"
 
     @staticmethod
     def _load_env_file() -> list[Path]:
@@ -287,6 +326,9 @@ class SupabaseClient:
             alerts, on_conflict="slug,market_question,holder_address"
         ).execute()
 
+    def delete_old_whale_alerts(self, cutoff_iso: str) -> None:
+        self.client.table("whale_alerts").delete().lt("detected_at", cutoff_iso).execute()
+
     def get_whale_user_profiles(self, addresses: list[str]) -> dict[str, dict[str, Any]]:
         if not addresses:
             return {}
@@ -332,6 +374,9 @@ class SupabaseClient:
         self.client.table("whale_trades").upsert(
             trades, on_conflict="transaction_hash"
         ).execute()
+
+    def delete_old_whale_trades(self, cutoff_ts: int) -> None:
+        self.client.table("whale_trades").delete().lt("timestamp", cutoff_ts).execute()
 
     def get_existing_late_market_slugs(self) -> set[str]:
         rows = (
@@ -420,3 +465,84 @@ class SupabaseClient:
         if not event_slugs:
             return
         self.client.table("world_cup_match_boards").delete().in_("event_slug", event_slugs).execute()
+
+    def get_world_cup_finished_scanned_event_slugs(self, event_slugs: list[str]) -> set[str]:
+        if not event_slugs:
+            return set()
+        out: set[str] = set()
+        chunk_size = 100
+        for i in range(0, len(event_slugs), chunk_size):
+            chunk = event_slugs[i:i + chunk_size]
+            values = ", ".join(self._sql_literal(slug) for slug in chunk)
+            sql = (
+                "SELECT event_slug "
+                "FROM world_cup_finished_events "
+                f"WHERE event_slug IN ({values});"
+            )
+            raw = self._run_psql(sql, tuples_only=True)
+            for line in raw.splitlines():
+                slug = line.strip()
+                if slug:
+                    out.add(slug)
+        return out
+
+    def upsert_world_cup_finished_events(self, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        columns = [
+            "event_slug",
+            "event_id",
+            "event_title",
+            "event_end_time",
+            "event_url",
+            "markets_scanned",
+            "results_count",
+            "scanned_at",
+        ]
+        values_sql = ",\n".join(
+            "(" + ", ".join(self._sql_literal(row.get(column)) for column in columns) + ")"
+            for row in rows
+        )
+        update_columns = [column for column in columns if column != "event_slug"]
+        updates_sql = ", ".join(f"{column}=EXCLUDED.{column}" for column in update_columns)
+        sql = (
+            "INSERT INTO world_cup_finished_events "
+            f"({', '.join(columns)}) VALUES\n{values_sql}\n"
+            "ON CONFLICT (event_slug) DO UPDATE SET "
+            f"{updates_sql};"
+        )
+        self._run_psql(sql)
+
+    def upsert_world_cup_finished_positions(self, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        columns = [
+            "event_slug",
+            "event_title",
+            "event_end_time",
+            "event_url",
+            "board_type",
+            "market_slug",
+            "condition_id",
+            "market_question",
+            "market_label",
+            "outcome_name",
+            "address",
+            "bet_amount",
+            "profit_amount",
+            "position_closed_at",
+            "scanned_at",
+        ]
+        values_sql = ",\n".join(
+            "(" + ", ".join(self._sql_literal(row.get(column)) for column in columns) + ")"
+            for row in rows
+        )
+        update_columns = [column for column in columns if column not in {"event_slug", "market_slug", "address", "market_label"}]
+        updates_sql = ", ".join(f"{column}=EXCLUDED.{column}" for column in update_columns)
+        sql = (
+            "INSERT INTO world_cup_finished_positions "
+            f"({', '.join(columns)}) VALUES\n{values_sql}\n"
+            "ON CONFLICT (event_slug, market_slug, address, market_label) DO UPDATE SET "
+            f"{updates_sql};"
+        )
+        self._run_psql(sql)

@@ -3,11 +3,14 @@ import { WhaleTrade } from "@/lib/types";
 import { WhaleTradeList } from "@/components/WhaleTradeList";
 
 export const dynamic = "force-dynamic";
+const RETENTION_HOURS = 48;
 
 export default async function WhaleTradesPage() {
+  const cutoffTs = Math.floor((Date.now() - RETENTION_HOURS * 60 * 60 * 1000) / 1000);
   const { data } = await getSupabase()
     .from("whale_trades")
     .select("*")
+    .gte("timestamp", cutoffTs)
     .order("timestamp", { ascending: false })
     .limit(200);
 
