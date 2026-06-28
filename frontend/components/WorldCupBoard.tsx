@@ -563,10 +563,10 @@ function filterLinesByHolderAmount(
           holders: side.holders.filter(
             (holder) => holder.amount !== null && Number.isFinite(holder.amount) && holder.amount >= threshold
           ),
-        }))
-        .filter((side) => side.holders.length > 0);
+        }));
 
-      if (sides.length <= 0) {
+      const hasVisibleHolders = sides.some((side) => side.holders.length > 0);
+      if (!hasVisibleHolders) {
         return null;
       }
 

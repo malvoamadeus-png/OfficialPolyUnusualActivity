@@ -224,6 +224,20 @@ def _slug_line_value(slug: str, pattern: re.Pattern[str]) -> float | None:
     return whole + frac / (10 ** digits)
 
 
+def _spread_line_value(market: dict[str, Any]) -> float | None:
+    line_value = _safe_float(market.get("line"))
+    if line_value is not None:
+        return abs(line_value)
+    return _slug_line_value(str(market.get("slug") or ""), SPREAD_SLUG_RE)
+
+
+def _total_line_value(market: dict[str, Any]) -> float | None:
+    line_value = _safe_float(market.get("line"))
+    if line_value is not None:
+        return line_value
+    return _slug_line_value(str(market.get("slug") or ""), TOTAL_SLUG_RE)
+
+
 def _is_main_moneyline_market(event_slug: str, market: dict[str, Any]) -> bool:
     slug = str(market.get("slug") or "")
     prefix = f"{event_slug}-"
@@ -234,11 +248,17 @@ def _is_main_moneyline_market(event_slug: str, market: dict[str, Any]) -> bool:
 
 
 def _is_full_game_spread_market(market: dict[str, Any]) -> bool:
+    sports_market_type = str(market.get("sportsMarketType") or "").lower()
+    if sports_market_type == "spreads":
+        return True
     slug = str(market.get("slug") or "")
     return bool(SPREAD_SLUG_RE.search(slug))
 
 
 def _is_full_game_total_market(market: dict[str, Any]) -> bool:
+    sports_market_type = str(market.get("sportsMarketType") or "").lower()
+    if sports_market_type:
+        return sports_market_type == "totals"
     slug = str(market.get("slug") or "")
     if "-team-total-" in slug or "-first-half-" in slug or "-second-half-" in slug:
         return False
@@ -317,33 +337,40 @@ def fetch_world_cup_events(session: requests.Session) -> list[dict[str, Any]]:
 def _fetch_child_event_ids(session: requests.Session, event_slug: str) -> list[str]:
     html = _http_get_text(session, SPORTS_PAGE_URL.format(event_slug=event_slug), timeout=20)
     match = NEXT_DATA_RE.search(html)
-    if not match:
-        return []
+    if match:
+        try:
+            next_data = json.loads(match.group(1))
+        except json.JSONDecodeError:
+            next_data = None
 
-    try:
-        next_data = json.loads(match.group(1))
-    except json.JSONDecodeError:
-        return []
+        if isinstance(next_data, dict):
+            queries = (
+                next_data.get("props", {})
+                .get("pageProps", {})
+                .get("dehydratedState", {})
+                .get("queries", [])
+            )
+            for query in queries:
+                if not isinstance(query, dict):
+                    continue
+                query_key = query.get("queryKey")
+                if not isinstance(query_key, list) or not query_key:
+                    continue
+                if query_key[0] != "parentToChildEventIds":
+                    continue
+                state_data = (query.get("state") or {}).get("data")
+                if not isinstance(state_data, dict):
+                    continue
+                child_ids = state_data.get(event_slug) or []
+                return [str(child_id) for child_id in child_ids if str(child_id)]
 
-    queries = (
-        next_data.get("props", {})
-        .get("pageProps", {})
-        .get("dehydratedState", {})
-        .get("queries", [])
-    )
-    for query in queries:
-        if not isinstance(query, dict):
-            continue
-        query_key = query.get("queryKey")
-        if not isinstance(query_key, list) or not query_key:
-            continue
-        if query_key[0] != "parentToChildEventIds":
-            continue
-        state_data = (query.get("state") or {}).get("data")
-        if not isinstance(state_data, dict):
-            continue
-        child_ids = state_data.get(event_slug) or []
-        return [str(child_id) for child_id in child_ids if str(child_id)]
+    marker = f'\\"data\\":\\{{\\"{event_slug}\\":['
+    query_marker = '\\"queryKey\\":[\\"parentToChildEventIds\\"]'
+    marker_idx = html.find(marker)
+    query_idx = html.find(query_marker, marker_idx if marker_idx >= 0 else 0)
+    if marker_idx >= 0 and query_idx > marker_idx:
+        ids_blob = html[marker_idx + len(marker):query_idx]
+        return re.findall(r'\\"(\d+)\\"', ids_blob)
     return []
 
 
@@ -559,26 +586,25 @@ def _spread_side_names(market: dict[str, Any], line_value: float) -> list[str]:
 
 
 def _build_spread_line(session: requests.Session, market: dict[str, Any], line_value: float) -> dict[str, Any]:
-    side_names = _spread_side_names(market, line_value)
-    short_label = side_names[0] if side_names else f"Spread {_format_line_value(line_value)}"
+    group_title = str(market.get("groupItemTitle") or "").strip()
+    short_label = group_title or f"Spread {_format_line_value(line_value)}"
     return _holders_for_market(
         session,
         market,
-        label=" / ".join(side_names) if side_names else short_label,
+        label=group_title or short_label,
         short_label=short_label,
-        side_names=side_names,
         line_value=line_value,
     )
 
 
 def _build_total_line(session: requests.Session, market: dict[str, Any], line_value: float) -> dict[str, Any]:
+    group_title = str(market.get("groupItemTitle") or "").strip()
     value_text = _format_line_value(line_value)
     return _holders_for_market(
         session,
         market,
-        label=f"O/U {value_text}",
-        short_label=value_text,
-        side_names=[f"O {value_text}", f"U {value_text}"],
+        label=group_title or f"O/U {value_text}",
+        short_label=group_title or value_text,
         line_value=line_value,
     )
 
@@ -834,7 +860,7 @@ def _build_event_context(session: requests.Session, event: dict[str, Any]) -> tu
             if not isinstance(market, dict) or not _is_unfinished_market(market):
                 continue
 
-            spread_value = _slug_line_value(str(market.get("slug") or ""), SPREAD_SLUG_RE)
+            spread_value = _spread_line_value(market)
             if spread_value is not None and _is_full_game_spread_market(market):
                 tasks.append(
                     {
@@ -847,7 +873,7 @@ def _build_event_context(session: requests.Session, event: dict[str, Any]) -> tu
                 )
                 continue
 
-            total_value = _slug_line_value(str(market.get("slug") or ""), TOTAL_SLUG_RE)
+            total_value = _total_line_value(market)
             if total_value is not None and _is_full_game_total_market(market):
                 tasks.append(
                     {
