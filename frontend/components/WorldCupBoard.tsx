@@ -246,17 +246,27 @@ function GroupPanel({
 
         {boardType === "moneyline" ? (
           <div className="grid w-full gap-3 md:max-w-[560px] md:grid-cols-3">
-            {lines[0].sides.map((side) => (
-              <div
-                key={`${match.event_slug}-${boardType}-${side.name}`}
-                className={`rounded-2xl bg-gradient-to-b ${accent} px-4 py-4 text-center shadow-[0_8px_0_rgba(32,42,58,0.18)]`}
+            {lines.map((line) => {
+              const key = lineKey(match.event_slug, boardType, line);
+              const active = selected && key === lineKey(match.event_slug, boardType, selected);
+              const yesSide = line.sides.find((side) => sideOutcomeLabel(side, 0).toLowerCase() === "yes") || line.sides[0];
+
+              return (
+              <button
+                key={key}
+                onClick={() => onSelectLine(match.event_slug, boardType, key)}
+                className={`rounded-2xl bg-gradient-to-b ${accent} px-4 py-4 text-center shadow-[0_8px_0_rgba(32,42,58,0.18)] transition ${
+                  active ? "ring-2 ring-[#0e1726] ring-offset-2 ring-offset-white" : "hover:-translate-y-0.5"
+                }`}
               >
-                <div className="text-sm font-semibold tracking-[0.02em] text-[#445065]">{side.name}</div>
+                <div className="text-sm font-semibold tracking-[0.02em] text-[#445065]">{line.short_label || line.label}</div>
                 <div className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-[#0b1220]">
-                  {formatCents(side.price)}
+                  {formatCents(yesSide?.price ?? null)}
                 </div>
-              </div>
-            ))}
+                <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#7a8799]">Yes</div>
+              </button>
+              );
+            })}
           </div>
         ) : selected ? (
           <div className="grid w-full gap-3 md:max-w-[560px] md:grid-cols-2">
@@ -282,7 +292,7 @@ function GroupPanel({
         ) : null}
       </div>
 
-      {lines.length > 0 && boardType !== "moneyline" && (
+      {lines.length > 1 && (
         <div className="border-t border-[#d6dce6] bg-white/70 px-4 py-4">
           <div className="flex gap-2 overflow-x-auto pb-1">
             {lines.map((line) => {
@@ -309,14 +319,7 @@ function GroupPanel({
 
       {lines.length > 0 && (
         <div className="border-t border-[#d6dce6] bg-[linear-gradient(180deg,#f5f7fb,#eef2f7)] px-4 py-4">
-          {boardType === "moneyline" ? (
-            <LineDetails
-              line={lines[0]}
-              lineId={lineKey(match.event_slug, boardType, lines[0])}
-              expanded={expandedDetails.has(lineKey(match.event_slug, boardType, lines[0]))}
-              onToggleDetail={onToggleDetail}
-            />
-          ) : selected ? (
+          {selected ? (
             <LineDetails
               line={selected}
               lineId={lineKey(match.event_slug, boardType, selected)}
@@ -371,7 +374,7 @@ function LineDetails({
           <div className={`grid gap-4 ${line.sides.length >= 3 ? "xl:grid-cols-3" : "md:grid-cols-2"}`}>
             {line.sides.map((side, idx) => (
               <div
-                key={`${lineId}-${side.name}`}
+                key={`${lineId}-${side.token_id || side.direction || idx}`}
                 className="rounded-[18px] border border-[#dde3ec] bg-[linear-gradient(180deg,#ffffff,#f7f9fc)] p-3"
               >
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -393,7 +396,7 @@ function LineDetails({
                   <div className="flex flex-col gap-3">
                     {side.holders.map((holder, idx) => (
                       <HolderRow
-                        key={`${lineId}-${side.name}-${holder.address}`}
+                        key={`${lineId}-${side.token_id || side.direction || idx}-${holder.address}`}
                         holder={holder}
                         rank={idx + 1}
                       />

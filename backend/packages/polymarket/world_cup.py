@@ -503,6 +503,7 @@ def _holders_for_market(
             {
                 "name": name,
                 "outcome": str(outcome),
+                "direction": "Yes" if idx == 0 else "No",
                 "token_id": token_id,
                 "price": price,
                 "holders": [],
@@ -526,11 +527,11 @@ def _holders_for_market(
     return line
 
 
-def _build_moneyline_line(
+def _build_moneyline_lines(
     session: requests.Session,
     event: dict[str, Any],
     moneyline_markets: list[dict[str, Any]],
-) -> dict[str, Any]:
+) -> list[dict[str, Any]]:
     event_slug = str(event.get("slug") or "")
     event_title = str(event.get("title") or event_slug)
     home_team, away_team = _parse_event_teams(event_title)
@@ -542,49 +543,30 @@ def _build_moneyline_line(
             *_market_sort_key(market),
         ),
     )
-    line = _build_line_base(
-        market_slug=f"{event_slug}-moneyline",
-        condition_id="",
-        question=event_title,
-        label="常规时间 胜平负",
-        short_label="Moneyline",
-        volume=sum(_market_metric(m, ("volumeNum", "volume", "volume24hr", "volume1wk", "volume1mo")) or 0.0 for m in ordered_markets),
-        liquidity=sum(_market_metric(m, ("liquidityNum", "liquidity", "liquidityClob")) or 0.0 for m in ordered_markets),
-        line_value=None,
-    )
 
-    errors: list[str] = []
+    lines: list[dict[str, Any]] = []
     for market in ordered_markets:
         outcomes = _parse_json_list(market.get("outcomes"))
-        prices = _parse_json_list(market.get("outcomePrices"))
-        token_ids = [str(token) for token in _parse_json_list(market.get("clobTokenIds"))]
-        condition_id = str(market.get("conditionId") or "")
-        if not condition_id or not token_ids or not outcomes:
-            errors.append(f"{market.get('slug')}:missing_condition_or_tokens")
-            continue
+        outcome_name = str(market.get("groupItemTitle") or market.get("title") or market.get("question") or "").strip()
+        if not outcome_name and outcomes:
+            outcome_name = str(outcomes[0])
+        if "draw" in outcome_name.lower():
+            outcome_name = "Draw"
+        if not outcome_name:
+            outcome_name = "Moneyline"
 
-        side_name = str(market.get("groupItemTitle") or outcomes[0] or "Unknown")
-        if "draw" in side_name.lower():
-            side_name = "Draw"
-        price = _safe_float(prices[0]) if prices else None
-        side = {
-            "name": side_name,
-            "outcome": "Yes",
-            "token_id": token_ids[0],
-            "price": price,
-            "holders": [],
-        }
-        try:
-            holders_by_token = _fetch_holders_by_token(session, condition_id)
-            side["holders"] = _extract_holder_rows(holders_by_token, token_ids[0])
-            _attach_holder_value(side["holders"], price)
-        except Exception as exc:
-            errors.append(f"{market.get('slug')}:{exc}")
-        line["sides"].append(side)
+        line = _holders_for_market(
+            session,
+            market,
+            label=f"{outcome_name} 胜平负",
+            short_label=outcome_name,
+            side_names=[outcome_name for _ in outcomes],
+            line_value=None,
+        )
+        line["question"] = str(market.get("question") or market.get("title") or event_title)
+        lines.append(line)
 
-    if errors:
-        line["error"] = "; ".join(errors[:5])
-    return line
+    return lines
 
 
 def _spread_side_names(market: dict[str, Any], line_value: float) -> list[str]:
@@ -899,14 +881,14 @@ def _build_event_context(session: requests.Session, event: dict[str, Any]) -> tu
     return row, tasks, validated
 
 
-def _fetch_line_for_task(session: requests.Session, task: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
+def _fetch_line_for_task(session: requests.Session, task: dict[str, Any]) -> tuple[str, str, dict[str, Any] | list[dict[str, Any]]]:
     worker_session = _new_session()
     event_slug = str(task["event_slug"])
     board_type = str(task["board_type"])
     task_type = str(task["task_type"])
 
     if task_type == "moneyline":
-        line = _build_moneyline_line(worker_session, task["event"], task["markets"])
+        line = _build_moneyline_lines(worker_session, task["event"], task["markets"])
     elif task_type == "spread":
         line = _build_spread_line(worker_session, task["market"], float(task["line_value"]))
     elif task_type == "total":
@@ -936,10 +918,28 @@ def _build_match_boards(session: requests.Session, events: list[dict[str, Any]])
             row = event_rows.get(event_slug)
             if row is None:
                 continue
-            row["boards_json"][board_type].append(line)
+            if isinstance(line, list):
+                row["boards_json"][board_type].extend(line)
+            else:
+                row["boards_json"][board_type].append(line)
 
     for row in event_rows.values():
-        row["boards_json"]["moneyline"].sort(key=lambda item: (-float(item.get("volume") or 0.0), row["start_time"]))
+        home_team, away_team = _parse_event_teams(str(row.get("event_title") or ""))
+        row["boards_json"]["moneyline"].sort(
+            key=lambda item: (
+                _moneyline_sort_rank(
+                    {
+                        "groupItemTitle": item.get("short_label"),
+                        "question": item.get("question"),
+                        "title": item.get("label"),
+                    },
+                    home_team,
+                    away_team,
+                ),
+                -float(item.get("volume") or 0.0),
+                str(item.get("label") or ""),
+            )
+        )
         for board_type in ("spread", "total"):
             row["boards_json"][board_type].sort(
                 key=lambda item: (

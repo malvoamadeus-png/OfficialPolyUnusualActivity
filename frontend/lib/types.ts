@@ -71,6 +71,7 @@ export interface WorldCupHolder {
 export interface WorldCupBoardSide {
   name: string;
   outcome?: string | null;
+  direction?: string | null;
   token_id: string | null;
   price: number | null;
   holders: WorldCupHolder[];
