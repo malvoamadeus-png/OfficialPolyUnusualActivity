@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   WorldCupBoardLine,
+  WorldCupBoardSide,
   WorldCupHolder,
   WorldCupMatchBoard,
 } from "@/lib/types";
@@ -268,7 +269,10 @@ function GroupPanel({
                     : "bg-[linear-gradient(180deg,#e79fb1,#d6728a)] text-white"
                 }`}
               >
-                <div className="text-sm font-semibold opacity-90">{side.name}</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">
+                  {sideOutcomeLabel(side, idx)}
+                </div>
+                <div className="mt-1 text-sm font-semibold opacity-95">{side.name}</div>
                 <div className="mt-2 text-3xl font-semibold tracking-[-0.03em]">
                   {formatCents(side.price)}
                 </div>
@@ -371,7 +375,12 @@ function LineDetails({
                 className="rounded-[18px] border border-[#dde3ec] bg-[linear-gradient(180deg,#ffffff,#f7f9fc)] p-3"
               >
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-[#0f1726]">{side.name}</div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#6f7f94]">
+                      {sideOutcomeLabel(side)}
+                    </div>
+                    <div className="truncate text-sm font-semibold text-[#0f1726]">{side.name}</div>
+                  </div>
                   <div className="rounded-full bg-[#eef3f8] px-3 py-1 text-xs text-[#5f7087]">
                     {formatPct(side.price)}
                   </div>
@@ -467,6 +476,12 @@ function isAddressAgeHot(value: number | null): boolean {
 
 function isPnlHot(value: number | null, threshold: number): boolean {
   return value !== null && Number.isFinite(value) && value > threshold;
+}
+
+function sideOutcomeLabel(side: WorldCupBoardSide, fallbackIndex = 0): string {
+  const outcome = side.outcome?.trim();
+  if (outcome) return outcome;
+  return fallbackIndex === 0 ? "Yes" : "No";
 }
 
 function countLines(match: WorldCupMatchBoard): number {

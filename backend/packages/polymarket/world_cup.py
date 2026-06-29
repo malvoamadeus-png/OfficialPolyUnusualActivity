@@ -49,6 +49,10 @@ def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _new_session() -> requests.Session:
+    return requests.Session()
+
+
 def _safe_float(value: Any) -> float | None:
     if isinstance(value, bool):
         return None
@@ -364,13 +368,17 @@ def _fetch_child_event_ids(session: requests.Session, event_slug: str) -> list[s
                 child_ids = state_data.get(event_slug) or []
                 return [str(child_id) for child_id in child_ids if str(child_id)]
 
-    marker = f'\\"data\\":\\{{\\"{event_slug}\\":['
-    query_marker = '\\"queryKey\\":[\\"parentToChildEventIds\\"]'
-    marker_idx = html.find(marker)
-    query_idx = html.find(query_marker, marker_idx if marker_idx >= 0 else 0)
-    if marker_idx >= 0 and query_idx > marker_idx:
-        ids_blob = html[marker_idx + len(marker):query_idx]
-        return re.findall(r'\\"(\d+)\\"', ids_blob)
+    query_idx = html.find("parentToChildEventIds")
+    if query_idx >= 0:
+        event_marker = f'\\"{event_slug}\\":['
+        window_start = max(0, query_idx - 8000)
+        marker_idx = html.rfind(event_marker, window_start, query_idx)
+        if marker_idx >= 0:
+            ids_start = marker_idx + len(event_marker)
+            ids_end = html.find("]", ids_start)
+            if ids_end >= 0:
+                ids_blob = html[ids_start:ids_end]
+                return re.findall(r"\d+", ids_blob)
     return []
 
 
@@ -494,6 +502,7 @@ def _holders_for_market(
         line["sides"].append(
             {
                 "name": name,
+                "outcome": str(outcome),
                 "token_id": token_id,
                 "price": price,
                 "holders": [],
@@ -560,6 +569,7 @@ def _build_moneyline_line(
         price = _safe_float(prices[0]) if prices else None
         side = {
             "name": side_name,
+            "outcome": "Yes",
             "token_id": token_ids[0],
             "price": price,
             "holders": [],
@@ -817,6 +827,7 @@ def _collect_unique_addresses(boards_by_event: dict[str, dict[str, Any]]) -> lis
 
 
 def _build_event_context(session: requests.Session, event: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
+    worker_session = _new_session()
     event_slug = str(event.get("slug") or "")
     start_time = str(event.get("_derived_start_time") or "")
     tags = event.get("tags") or []
@@ -842,14 +853,14 @@ def _build_event_context(session: requests.Session, event: dict[str, Any]) -> tu
         tasks.append({"event_slug": event_slug, "board_type": "moneyline", "task_type": "moneyline", "event": event, "markets": moneyline_markets})
 
     try:
-        child_event_ids = _fetch_child_event_ids(session, event_slug)
+        child_event_ids = _fetch_child_event_ids(worker_session, event_slug)
     except Exception:
         child_event_ids = []
 
     child_events: list[dict[str, Any]] = []
     for child_event_id in child_event_ids:
         try:
-            child_event = _fetch_event_by_id(session, child_event_id)
+            child_event = _fetch_event_by_id(worker_session, child_event_id)
         except Exception:
             child_event = None
         if child_event:
@@ -889,16 +900,17 @@ def _build_event_context(session: requests.Session, event: dict[str, Any]) -> tu
 
 
 def _fetch_line_for_task(session: requests.Session, task: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
+    worker_session = _new_session()
     event_slug = str(task["event_slug"])
     board_type = str(task["board_type"])
     task_type = str(task["task_type"])
 
     if task_type == "moneyline":
-        line = _build_moneyline_line(session, task["event"], task["markets"])
+        line = _build_moneyline_line(worker_session, task["event"], task["markets"])
     elif task_type == "spread":
-        line = _build_spread_line(session, task["market"], float(task["line_value"]))
+        line = _build_spread_line(worker_session, task["market"], float(task["line_value"]))
     elif task_type == "total":
-        line = _build_total_line(session, task["market"], float(task["line_value"]))
+        line = _build_total_line(worker_session, task["market"], float(task["line_value"]))
     else:
         raise RuntimeError(f"unsupported task_type={task_type}")
     return event_slug, board_type, line
@@ -967,7 +979,7 @@ def _refresh_address_metrics(
     upsert_rows: list[dict[str, Any]] = []
 
     def fetch_one(address: str) -> tuple[str, dict[str, Any], dict[str, Any]]:
-        metric, cache_row = _fetch_address_metric(session, address)
+        metric, cache_row = _fetch_address_metric(_new_session(), address)
         return address, metric, cache_row
 
     if to_refresh:
