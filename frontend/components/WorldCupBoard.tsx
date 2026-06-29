@@ -369,7 +369,7 @@ function LineDetails({
           )}
           <div className="mb-4 text-sm text-[#64748b]">{line.question || line.label}</div>
           <div className={`grid gap-4 ${line.sides.length >= 3 ? "xl:grid-cols-3" : "md:grid-cols-2"}`}>
-            {line.sides.map((side) => (
+            {line.sides.map((side, idx) => (
               <div
                 key={`${lineId}-${side.name}`}
                 className="rounded-[18px] border border-[#dde3ec] bg-[linear-gradient(180deg,#ffffff,#f7f9fc)] p-3"
@@ -377,7 +377,7 @@ function LineDetails({
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#6f7f94]">
-                      {sideOutcomeLabel(side)}
+                      {sideOutcomeLabel(side, idx)}
                     </div>
                     <div className="truncate text-sm font-semibold text-[#0f1726]">{side.name}</div>
                   </div>
@@ -479,8 +479,8 @@ function isPnlHot(value: number | null, threshold: number): boolean {
 }
 
 function sideOutcomeLabel(side: WorldCupBoardSide, fallbackIndex = 0): string {
-  const outcome = side.outcome?.trim();
-  if (outcome) return outcome;
+  const direction = side.direction?.trim();
+  if (direction) return direction;
   return fallbackIndex === 0 ? "Yes" : "No";
 }
 
