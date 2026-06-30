@@ -35,7 +35,7 @@ EVENT_PAGE_SIZE = 100
 EVENTS_MAX_PAGES = 5
 MAX_EVENTS = 30
 MAX_WORKERS = 8
-ADDRESS_CACHE_TTL_HOURS = 24
+ADDRESS_CACHE_TTL_HOURS = 4
 USER_PNL_FIDELITY = "12h"
 USER_PNL_INTERVAL = "all"
 METRICS_COMPAT_VERSION = "world_cup_user_pnl_all_12h_v1"
@@ -1037,7 +1037,7 @@ def _run_world_cup(sb: SupabaseClient, once: bool = False) -> None:
         f"(validate_tag_hit={validated_count}/{len(events)})"
     )
 
-    print("[3/4] Refreshing address metrics with 24h cache...")
+    print("[3/4] Refreshing address metrics with 4h cache...")
     _, cache_hits, refreshed = _refresh_address_metrics(session, sb, boards_by_event)
     print(f"  Address metrics cache_hit={cache_hits}, refreshed={refreshed}")
 
